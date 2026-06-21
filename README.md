@@ -4,6 +4,8 @@ A tiny macOS menu-bar cat that watches your local AI coding-agent sessions.
 
 [![Download Tama.dmg](assets/download.svg)](https://github.com/pmrster/tama/releases/latest/download/Tama.dmg)
 
+<sub>First launch shows a macOS security prompt (not yet notarized) — open it via **System Settings → Privacy & Security → Open Anyway**. [Full steps ↓](#download)</sub>
+
 [![License: MIT](https://img.shields.io/badge/license-MIT-F3BD4F?style=flat-square&labelColor=1C1A17)](LICENSE)
 &nbsp;[![Platform: macOS 13+](https://img.shields.io/badge/macOS-13%2B-9A8F84?style=flat-square&labelColor=1C1A17&logo=apple&logoColor=EDE6DC)](#download)
 &nbsp;[![Swift 6](https://img.shields.io/badge/Swift-6-F3BD4F?style=flat-square&labelColor=1C1A17&logo=swift&logoColor=EDE6DC)](#run-from-source)
