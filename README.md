@@ -265,6 +265,50 @@ byte-identical, so the readers provably never modify the filesystem. Worst case,
 shows incomplete or wrong numbers — it should never be able to delete, modify, execute,
 or transmit your data. See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
+## FAQ
+
+### What is Tama?
+
+Tama is a free, open-source macOS menu-bar app — a Tamagotchi-style pixel cat that shows
+how many local AI coding-agent sessions are active right now, grouped by project folder,
+plus each session's live context-window fill and today's token usage. It runs in the menu
+bar only, with no Dock icon.
+
+### Which AI coding agents does Tama support?
+
+Claude Code, Codex, Gemini CLI, and Antigravity. Claude Code and Codex report live context,
+today's tokens, model, and estimated cost; Gemini CLI and Antigravity appear by folder and
+recency only, because their plain logs carry no token counts.
+
+### Does Tama send my data anywhere?
+
+No. Tama is read-only and local-only — it reads each agent's own log files on your Mac and
+never writes to them, spawns a process, checks for updates, or makes a network request. The
+only network-adjacent action is clicking a link that opens GitHub in your browser. This is
+enforced by a test that proves the readers never modify the filesystem.
+
+### How does Tama track Claude Code token usage?
+
+It reads Claude Code's local session logs at `~/.claude/projects/<project>/<session>.jsonl`
+once every few seconds and sums today's input, output, and cache tokens per session and per
+project. Codex usage comes from `~/.codex/sessions/`. Nothing is sent off your Mac.
+
+### Is Tama free?
+
+Yes — free and open source under the MIT license. There is no account, subscription, or
+telemetry.
+
+### What does Tama cost to run?
+
+Nothing. The `~$` figures it shows are an *estimate* of pay-as-you-go API token cost so you
+can see where your tokens go — they are not your actual bill, which differs under Claude Max
+or ChatGPT subscriptions.
+
+### Does Tama work on Windows or Linux?
+
+No. Tama is macOS-only and requires macOS 13 (Ventura) or later. It is a native
+Swift 6 / SwiftUI menu-bar app.
+
 ## Contributing
 
 Issues and pull requests are welcome.
