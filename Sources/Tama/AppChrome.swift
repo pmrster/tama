@@ -327,7 +327,10 @@ struct AboutView: View {
 /// The menu-bar icon: a tiny pixel-pet face, drawn as a template image so it adapts to
 /// light/dark menu bars. Gives the app a recognizable identity next to the counts.
 enum MenuBarIcon {
-    static let image: NSImage = {
+    // @MainActor: NSImage isn't Sendable, so a non-isolated static is rejected under Swift 6
+    // strict concurrency (Xcode 16 / Swift 6.0). The only use site is the @MainActor
+    // StatusItemController, so main-actor isolation is correct and free.
+    @MainActor static let image: NSImage = {
         // A tiny side-view cat silhouette (head right, tail left) — solid so it
         // reads cleanly as a template at menu-bar size.
         let grid = [
