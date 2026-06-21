@@ -1,3 +1,5 @@
+# Keep stray Finder metadata out. Packaging/dmg.DS_Store is a deliberately named
+# deterministic DMG layout artifact, not a local Finder .DS_Store.
 .DS_Store
 .build/
 *.xcodeproj
@@ -18,6 +20,8 @@ state/
 *.tmp
 *.swp
 *.swo
+__pycache__/
+*.pyc
 
 CLAUDE.md
 GEMINI.md

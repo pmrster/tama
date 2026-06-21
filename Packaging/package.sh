@@ -9,8 +9,17 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR=".build/release"
 DIST="dist"
 APP="$DIST/$DISPLAY.app"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+REQUIRE_NOTARIZATION="${REQUIRE_NOTARIZATION:-0}"
+ENTITLEMENTS="Packaging/Tama.entitlements"
 
 cd "$REPO_ROOT"
+
+if [ "$REQUIRE_NOTARIZATION" = "1" ] && { [ -z "$SIGN_IDENTITY" ] || [ -z "$NOTARY_PROFILE" ]; }; then
+  echo "ERROR: REQUIRE_NOTARIZATION=1 needs SIGN_IDENTITY and NOTARY_PROFILE." >&2
+  exit 1
+fi
 
 echo "==> Building release binary"
 swift build -c release --product "$APP_NAME"
@@ -26,16 +35,18 @@ if [ -f Packaging/AppIcon.icns ]; then
   cp Packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 fi
 
-# Bundle the SwiftPM resource bundle (prices.json) next to the binary, in Resources,
-# AND at the .app top level (where Bundle.main.bundleURL-based searches resolve it).
+# Bundle the SwiftPM resource bundle (prices.json) into Contents/Resources ONLY.
+# CostEstimator resolves it via Bundle.main.resourceURL (= Contents/Resources); Bundle.module
+# is never used. It must NOT go at the .app root or in Contents/MacOS — a non-Contents item at
+# the bundle root makes the .app unsignable ("unsealed contents in the bundle root"), which
+# blocks both ad-hoc signing AND notarization.
 RES_BUNDLE="$BUILD_DIR/Tama_TamaCore.bundle"
 if [ -d "$RES_BUNDLE" ]; then
-  cp -R "$RES_BUNDLE" "$APP/Contents/MacOS/"
   cp -R "$RES_BUNDLE" "$APP/Contents/Resources/"
-  cp -R "$RES_BUNDLE" "$APP/"
 fi
 
-test -d "$APP/$(basename "$RES_BUNDLE")" || echo "WARN: resource bundle missing from app root"
+test -d "$APP/Contents/Resources/$(basename "$RES_BUNDLE")" \
+  || echo "WARN: resource bundle missing from Contents/Resources"
 
 # ---- Optional: code signing + notarization (Gatekeeper trust) -------------------------------
 # Set SIGN_IDENTITY to a "Developer ID Application: NAME (TEAMID)" identity to sign + harden.
@@ -44,10 +55,8 @@ test -d "$APP/$(basename "$RES_BUNDLE")" || echo "WARN: resource bundle missing 
 #   xcrun notarytool store-credentials NOTARY_PROFILE \
 #     --apple-id you@example.com --team-id TEAMID --password <app-specific-password>
 # With neither set, the build still produces an UNSIGNED app/DMG (Gatekeeper will warn users).
-SIGN_IDENTITY="${SIGN_IDENTITY:-}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-}"
-ENTITLEMENTS="Packaging/Tama.entitlements"
-
+# Set REQUIRE_NOTARIZATION=1 for public release builds; the script will fail unless both signing
+# and notarization credentials are configured.
 if [ -n "$SIGN_IDENTITY" ]; then
   echo "==> Code-signing app (hardened runtime): $SIGN_IDENTITY"
   ENT_ARGS=()
@@ -56,13 +65,36 @@ if [ -n "$SIGN_IDENTITY" ]; then
     "${ENT_ARGS[@]}" --sign "$SIGN_IDENTITY" "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
 else
-  echo "WARN: SIGN_IDENTITY unset → shipping an UNSIGNED app. Gatekeeper will warn users."
+  # No Developer ID: re-sign ad-hoc AFTER the bundle is assembled. The linker ad-hoc-signs the
+  # bare binary, but adding Info.plist + resource bundles invalidates that signature — which makes
+  # macOS report a quarantined download as "damaged" (the scary message). A VALID ad-hoc signature
+  # downgrades that to the normal "unidentified developer", which users clear via right-click → Open
+  # (no Terminal). It is still NOT notarized — only a Developer ID + notarization removes the prompt.
+  echo "==> Ad-hoc signing app (no SIGN_IDENTITY → not notarized; users right-click → Open once)"
+  codesign --force --deep --sign - "$APP"
+  codesign --verify --deep --strict "$APP" && echo "    ad-hoc signature valid" \
+    || echo "WARN: ad-hoc signature did not verify"
 fi
 
 echo "==> Creating DMG"
 DMG="$DIST/$APP_NAME-$VERSION.dmg"
 rm -f "$DMG"
-hdiutil create -volname "$DISPLAY" -srcfolder "$APP" -ov -format UDZO "$DMG"
+# Stage the .app + an /Applications symlink + a prebuilt window layout, then bake them into the
+# DMG. The committed Packaging/dmg.DS_Store positions Tama on the LEFT and Applications on the
+# RIGHT (natural left→right drag); baking it in at create time needs NO Finder automation /
+# Automation permission. Regenerate it with: python3 Packaging/make-dmg-dsstore.py Packaging/dmg.DS_Store
+STAGE="$DIST/.dmg-stage"
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+cp -R "$APP" "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+if [ -f Packaging/dmg.DS_Store ]; then
+  cp Packaging/dmg.DS_Store "$STAGE/.DS_Store"
+else
+  echo "    (no Packaging/dmg.DS_Store — DMG will use default icon arrangement)"
+fi
+hdiutil create -volname "$DISPLAY" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+rm -rf "$STAGE"
 
 # Notarize the DMG BEFORE hashing/copying so the SHA-256 and the stable copy cover the stapled
 # file. Stapling rewrites the DMG, so order matters here.

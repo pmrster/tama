@@ -19,9 +19,11 @@ Tama lives in the menu bar and shows how many Claude Code, Codex, Gemini CLI, an
 Antigravity sessions are recently active on your Mac — grouped by project folder —
 plus how full each session's context window is and how many tokens you've used today.
 
-It is **read-only, local-only, and never touches the network**. Tama reads the agents'
-own local log files; it never writes to them, spawns a process, or sends data anywhere.
-This is a hard design invariant, enforced by tests — see [Safety](#safety-model).
+It is **read-only, local-only, and has no automatic network activity**. Tama reads the
+agents' own local log files; it never writes to them, spawns a process, phones home,
+or sends data anywhere. The only network-adjacent actions are user-clicked buttons
+that hand GitHub URLs to your browser. This is a hard design invariant, enforced by
+tests — see [Safety](#safety-model).
 
 <p align="center">
   <picture>
@@ -92,6 +94,12 @@ This is **not your actual bill.** Claude Max / ChatGPT subscriptions are billed
 differently (often a flat fee), so treat `~$` as a relative gauge of where your tokens
 are going, not an invoice.
 
+## Privacy
+
+Tama does not collect, transmit, sell, or share personal data. All scanning and cost
+estimation happens on your Mac from local agent logs. See [PRIVACY.md](PRIVACY.md)
+for the full privacy statement.
+
 ## Screens
 
 <table>
@@ -134,10 +142,20 @@ no token counts, so token, cost, and `ctx` all show `—`.
 ## Download
 
 [**⬇ Download Tama.dmg**](https://github.com/pmrster/tama/releases/latest/download/Tama.dmg)
-— latest release. Open the `.dmg` and drag **Tama** to `/Applications`.
+— latest release. Open the `.dmg` and drag **Tama** into the **Applications** folder shown
+in the window.
 
-Tama is currently **unsigned**, so on first launch macOS warns about an "unidentified
-developer": right-click the app → **Open**, then confirm **Open** (once only).
+Tama is in active development — notarized builds are on the roadmap. Until then, like any app
+distributed outside the App Store, macOS shows a security prompt on first launch. Open it once
+using Apple's standard step (no Terminal):
+
+1. Double-click **Tama** → at the prompt, click **Done**.
+2. **System Settings → Privacy & Security** → scroll to the Tama message → **Open Anyway** → **Open**.
+
+It launches normally after that. (On older macOS: right-click the app → **Open** → **Open**.)
+
+> Saw *"Tama is damaged"* on an earlier download? Please redownload — that was a packaging bug,
+> now fixed.
 
 Checksums and previous versions are on the
 [releases page](https://github.com/pmrster/tama/releases/latest). Prefer to build it
@@ -149,8 +167,17 @@ No automated releases yet — building the `.dmg` is a manual `package.sh` run:
 
 ```bash
 swift test                 # run the full test suite
-Packaging/package.sh 0.2.0 # → dist/Tama.app + dist/Tama-0.2.0.dmg (+ Tama.dmg)
+Packaging/package.sh 0.2.2 # → dist/Tama.app + dist/Tama-0.2.2.dmg (+ Tama.dmg)
 open "dist/Tama.app"
+```
+
+For a public release build, require Developer ID signing and notarization:
+
+```bash
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+NOTARY_PROFILE="tama-notary" \
+REQUIRE_NOTARIZATION=1 \
+Packaging/package.sh 0.2.2
 ```
 
 To keep it around:
@@ -224,7 +251,8 @@ Tama is designed to be boringly safe:
 
 - **Read-only.** It reads logs under `~/.claude`, `~/.codex`, and `~/.gemini` using
   read-only memory-mapped reads; it never writes back to those folders.
-- **Local-only.** No analytics, telemetry, update checks, or network code of any kind.
+- **Local-only.** No analytics, telemetry, automatic update checks, or in-app network
+  requests. The About window has user-clicked GitHub links that open in your browser.
 - **No command execution.** The running app never spawns a shell command or process.
 - **No root or helper daemon.** It runs as your normal macOS user.
 - **Hardened file reads.** Readers reject symlinks, non-regular files, and oversized
@@ -233,7 +261,7 @@ Tama is designed to be boringly safe:
 A test snapshots the log fixture tree before and after a scan and asserts it is
 byte-identical, so the readers provably never modify the filesystem. Worst case, Tama
 shows incomplete or wrong numbers — it should never be able to delete, modify, execute,
-or transmit your data. See [SECURITY.md](SECURITY.md).
+or transmit your data. See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
 ## Contributing
 
@@ -243,8 +271,8 @@ Issues and pull requests are welcome.
 - Logic lives in `TamaCore` and should stay fully testable (dependencies injected, no
   AppKit). The `Tama` target is the thin UI shell.
 - **Never break the safety invariant.** No writes to agent log directories, no process
-  spawning, no network. If you add a provider or reader, extend the safety test to
-  cover it.
+  spawning, no automatic network activity. If you add a provider or reader, extend the
+  safety test to cover it.
 
 ## Project status
 
