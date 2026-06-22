@@ -183,7 +183,7 @@ struct DashboardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            PetView(energy: activeNow)
+            PetView(mood: monitor.state.mood)
                 .frame(height: 34)
                 .clipped()                       // keep the sprite + meow inside the strip
                 .padding(.horizontal, 14)        // inset so the cat doesn't touch the edges

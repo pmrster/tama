@@ -254,7 +254,7 @@ enum Snapshot {
 /// the walk on a frame where "meow~" shows so the PNG is deterministic.
 private struct CatCard: View {
     var body: some View {
-        PetView(energy: 3, snapshotTime: 0.35)
+        PetView(mood: .working(intensity: 3), snapshotTime: 0.35)
             .frame(width: 168)
             .padding(.horizontal, 18)
             .padding(.top, 16).padding(.bottom, 12)
@@ -267,7 +267,7 @@ private struct CatCard: View {
 private struct CatStrip: View {
     let t: Double
     var body: some View {
-        PetView(energy: 4, snapshotTime: t)
+        PetView(mood: .working(intensity: 4), snapshotTime: t)
             .frame(width: 200)
             .padding(.vertical, 4)
             .background(Palette.panel)

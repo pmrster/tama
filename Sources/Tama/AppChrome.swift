@@ -241,7 +241,7 @@ struct AboutView: View {
     var body: some View {
         VStack(spacing: 0) {
             // The mascot pacing across the top, on its own little stage.
-            PetView(energy: 2)
+            PetView(mood: .working(intensity: 2))
                 .frame(height: 40)
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
