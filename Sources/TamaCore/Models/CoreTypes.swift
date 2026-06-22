@@ -181,10 +181,11 @@ public struct AppState: Sendable, Equatable {
     public let usage: [Provider: UsageStats]
     public let lastUpdated: Date
     public let activeSessions: [SessionInfo]
+    public let mood: Mood
     public init(sessions: [AgentSession], usage: [Provider: UsageStats], lastUpdated: Date,
-                activeSessions: [SessionInfo] = []) {
+                activeSessions: [SessionInfo] = [], mood: Mood = .napping) {
         self.sessions = sessions; self.usage = usage; self.lastUpdated = lastUpdated
-        self.activeSessions = activeSessions
+        self.activeSessions = activeSessions; self.mood = mood
     }
     public static let empty = AppState(sessions: [], usage: [:], lastUpdated: .distantPast)
 }

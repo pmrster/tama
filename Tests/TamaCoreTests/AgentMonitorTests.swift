@@ -81,4 +81,30 @@ final class AgentMonitorTests: XCTestCase {
         }
         wait(for: [exp], timeout: 2)
     }
+
+    func test_refresh_publishes_working_mood_for_active_session() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let session = SessionInfo(provider: .claudeCode, project: "tama-widget",
+                                  folder: "/code/tama-widget",
+                                  lastActivity: now.addingTimeInterval(-60))
+        let scanner = MoodMonitorStubScanner(activity: Activity(sessions: [session], totals: [:]))
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentMonitorMood-\(UUID().uuidString)", isDirectory: true)
+        // Pre-seed lastSeenDay = now so greeting doesn't fire; we want to test working state.
+        let store = CatStateStore(directory: tmp)
+        store.save(CatState(lastSeenDay: now))
+        let monitor = AgentMonitor(reader: scanner, now: { now }, runsInBackground: false,
+                                   catStateStore: store)
+        monitor.refresh()
+        XCTAssertEqual(monitor.state.mood, .working(intensity: 1))
+        try? FileManager.default.removeItem(at: tmp)
+    }
+}
+
+/// Minimal `ActivityScanning` stub that returns a fixed `Activity`. A struct (not a class)
+/// because `ActivityScanning: Sendable` — a value type with a `Sendable` `Activity` is
+/// `Sendable` automatically; a class would need `@unchecked Sendable`.
+private struct MoodMonitorStubScanner: ActivityScanning {
+    let activity: Activity
+    func scan() -> Activity { activity }
 }

@@ -20,13 +20,21 @@ public final class AgentMonitor: ObservableObject {
     private var currentInterval: TimeInterval?
     private var interactiveConsumers = 0
     private var inFlight = false
+    private let moodEngine: MoodEngine
+    private let catStateStore: CatStateStore
+    private var catState: CatState
 
     public init(reader: ActivityScanning, now: @escaping () -> Date = { Date() },
-                runsInBackground: Bool = true, estimator: CostEstimator = CostEstimator()) {
+                runsInBackground: Bool = true, estimator: CostEstimator = CostEstimator(),
+                moodEngine: MoodEngine = MoodEngine(),
+                catStateStore: CatStateStore = .applicationSupport()) {
         self.reader = reader
         self.estimator = estimator
         self.nowProvider = now
         self.runsInBackground = runsInBackground
+        self.moodEngine = moodEngine
+        self.catStateStore = catStateStore
+        self.catState = catStateStore.load()
     }
 
     /// Estimated pay-as-you-go API cost of this session's tokens today (not a subscription bill).
@@ -65,7 +73,13 @@ public final class AgentMonitor: ObservableObject {
             }
             usage[provider] = UsageStats(todayTokens: tokens, todayCost: cost, byProject: [])
         }
-        state = AppState(sessions: [], usage: usage, lastUpdated: now, activeSessions: activity.sessions)
+        let (mood, newCatState) = moodEngine.evaluate(activity: activity, now: now, state: catState)
+        if newCatState != catState {
+            catState = newCatState
+            catStateStore.save(newCatState)
+        }
+        state = AppState(sessions: [], usage: usage, lastUpdated: now,
+                         activeSessions: activity.sessions, mood: mood)
     }
 
     public func start(interval: TimeInterval = 7) {
