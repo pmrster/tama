@@ -70,7 +70,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         super.init()
 
         if let button = statusItem.button {
-            button.image = MenuBarIcon.image
+            button.image = MenuBarIcon.image(for: monitor.state.mood)
             button.imagePosition = .imageLeading
             button.target = self
             button.action = #selector(handleClick)
@@ -93,6 +93,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
         // Keep the menu-bar count text in sync with the live state.
         cancellable = monitor.$state.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.statusItem.button?.image = MenuBarIcon.image(for: self?.monitor.state.mood ?? .napping)
             self?.updateTitle()
         }
         updateTitle()
@@ -324,26 +325,38 @@ struct AboutView: View {
     }
 }
 
-/// The menu-bar icon: a tiny pixel-pet face, drawn as a template image so it adapts to
-/// light/dark menu bars. Gives the app a recognizable identity next to the counts.
+/// The menu-bar icon: a tiny pixel-pet silhouette, drawn as a template image so it adapts to
+/// light/dark menu bars. Gives the app a recognizable identity next to the counts. The glyph
+/// changes with mood — awake cat for working/greeting/resting, curled cat for napping.
 enum MenuBarIcon {
-    // @MainActor: NSImage isn't Sendable, so a non-isolated static is rejected under Swift 6
-    // strict concurrency (Xcode 16 / Swift 6.0). The only use site is the @MainActor
-    // StatusItemController, so main-actor isolation is correct and free.
-    @MainActor static let image: NSImage = {
-        // A tiny side-view cat silhouette (head right, tail left) — solid so it
-        // reads cleanly as a template at menu-bar size.
-        let grid = [
-            ".....XX...XX.",   // ears
-            ".....XXXXXXX.",
-            ".....XXXXXXXX",
-            ".....XXXXXXXX",
-            "XX...XXXXXXXX",   // tail stub
-            ".XXXXXXXXXXXX",   // tail merges into body
-            ".XXXXXXXXXXXX",
-            "..XXXXXXXXXX.",
-            "..X.XX.XX.X..",   // legs
-        ]
+    // Awake silhouette (eyes open, tail up) — working / greeting / resting.
+    private static let awake = [
+        ".....XX...XX.",   // ears
+        ".....XXXXXXX.",
+        ".....XXXXXXXX",
+        ".....XXXXXXXX",
+        "XX...XXXXXXXX",   // tail stub
+        ".XXXXXXXXXXXX",   // tail merges into body
+        ".XXXXXXXXXXXX",
+        "..XXXXXXXXXX.",
+        "..X.XX.XX.X..",   // legs
+    ]
+    // Sleeping silhouette (curled, lower profile, tail tucked) — napping.
+    private static let asleep = [
+        "............",
+        "............",
+        "....XXXX....",   // tucked head
+        "..XXXXXXXX..",
+        ".XXXXXXXXXX.",
+        ".XXXXXXXXXXX",
+        ".XXXXXXXXXXX",
+        "..XXXXXXXX..",
+        "............",
+    ]
+
+    @MainActor static func image(for mood: Mood) -> NSImage {
+        let napping: Bool = { if case .napping = mood { return true } else { return false } }()
+        let grid = napping ? asleep : awake
         let px: CGFloat = 1.7
         let cols = grid[0].count, rows = grid.count
         let img = NSImage(size: NSSize(width: CGFloat(cols) * px, height: CGFloat(rows) * px))
@@ -359,5 +372,5 @@ enum MenuBarIcon {
         img.unlockFocus()
         img.isTemplate = true
         return img
-    }()
+    }
 }
