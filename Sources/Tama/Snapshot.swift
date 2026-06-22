@@ -66,6 +66,41 @@ enum Snapshot {
         }
     }
 
+    /// Mock Ollama enrichment for demo/screenshot builds — several models used this session, the
+    /// current one busy (idle + aged when `--sleep`).
+    struct MockOllama: OllamaReading {
+        func read() -> OllamaStatus? {
+            let asleep = Snapshot.sleepMode
+            let now = Date()
+            func used(_ ago: TimeInterval) -> Date { now.addingTimeInterval(-(ago + (asleep ? 3600 : 0))) }
+            return OllamaStatus(running: true, lastActivity: used(asleep ? 0 : 5), models: [
+                OllamaModelActivity(model: "gemma4:12b-mlx", current: true, busy: !asleep,
+                                    lastActivity: used(5), contextWindow: 32768, contextTokens: 12_480,
+                                    tokensPerSecond: 64, lastLatency: 30.3, kind: .chat, requestCount: 7),
+                OllamaModelActivity(model: "gemma4:26b-mlx", lastActivity: used(620),
+                                    contextWindow: 32768, contextTokens: 8_100, lastLatency: 41.4,
+                                    kind: .chat, requestCount: 3),
+                OllamaModelActivity(model: "qwen3.6:27b-mlx", lastActivity: used(3500),
+                                    contextWindow: 32768, contextTokens: 2_300, lastLatency: 5.0,
+                                    kind: .chat, requestCount: 2),
+                OllamaModelActivity(model: "bge-m3", lastActivity: used(4200), lastLatency: 0.12,
+                                    kind: .embed, requestCount: 11),
+            ])
+        }
+    }
+    struct MockOllamaPresence: OllamaPresenceScanning {
+        func ollamaProcesses() -> [ProcInfo] {
+            [ProcInfo(pid: 1, ppid: 0, execPath: "/Applications/Ollama.app/Contents/Resources/ollama",
+                      argv: ["ollama", "serve"], cwd: nil, hasTTY: false, commName: "ollama")]
+        }
+    }
+
+    /// Demo monitor: mock sessions plus a mock running Ollama server, so the local-model tile shows.
+    @MainActor static func demoMonitor() -> AgentMonitor {
+        AgentMonitor(reader: MockReader(), runsInBackground: false,
+                     presenceScanner: MockOllamaPresence(), ollamaReader: MockOllama())
+    }
+
     @MainActor
     static func renderIfRequested() {
         let args = CommandLine.arguments
@@ -90,7 +125,7 @@ enum Snapshot {
         guard let i = args.firstIndex(of: "--snapshot") else { return }
         let width = (i + 1 < args.count ? Double(args[i + 1]) : nil).map { CGFloat($0) } ?? 340
         sleepMode = args.contains("--sleep")
-        let monitor = AgentMonitor(reader: MockReader(), runsInBackground: false)
+        let monitor = demoMonitor()
         monitor.refresh()
         if args.contains("--expand") {
             let folder = "/Example/Projects/tama-widget"
@@ -132,7 +167,7 @@ enum Snapshot {
 
         func dashboards(_ prefix: String) {
             for (tag, ap) in appearances {
-                let monitor = AgentMonitor(reader: MockReader(), runsInBackground: false)
+                let monitor = demoMonitor()
                 monitor.refresh()
                 write(renderPNG(DashboardView(monitor: monitor, fixedWidth: 300), appearance: ap),
                       "\(prefix)-\(tag).png")
@@ -147,7 +182,7 @@ enum Snapshot {
         // Pinned window: the same tree at the resizable width (fixedWidth nil), which adds
         // full session names + inline message counts the narrow popover hides.
         for (tag, ap) in appearances {
-            let monitor = AgentMonitor(reader: MockReader(), runsInBackground: false)
+            let monitor = demoMonitor()
             monitor.refresh()
             let view = DashboardView(monitor: monitor, fixedWidth: nil, managesRefresh: false)
                 .frame(width: 380, height: 540)

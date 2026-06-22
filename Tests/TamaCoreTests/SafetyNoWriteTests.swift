@@ -21,12 +21,18 @@ final class SafetyNoWriteTests: XCTestCase {
         let root = fm.temporaryDirectory.appendingPathComponent("safety-\(UUID().uuidString)")
         let claudeProj = root.appendingPathComponent("claude/-Users-x-p")
         let codexDay = root.appendingPathComponent("codex/2026/06/19")
+        let ollamaLogs = root.appendingPathComponent("ollama/logs")
         try fm.createDirectory(at: claudeProj, withIntermediateDirectories: true)
         try fm.createDirectory(at: codexDay, withIntermediateDirectories: true)
+        try fm.createDirectory(at: ollamaLogs, withIntermediateDirectories: true)
         try "{\"timestamp\":\"2026-06-19T09:00:00.000Z\",\"cwd\":\"/Example/Code/p\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}"
             .write(to: claudeProj.appendingPathComponent("s.jsonl"), atomically: true, encoding: .utf8)
         try "{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"total_tokens\":2}}}}"
             .write(to: codexDay.appendingPathComponent("rollout-2026-06-19T09-00-00-aaaaaaaa-x.jsonl"), atomically: true, encoding: .utf8)
+        try ("time=2026-06-22T18:36:56.556+07:00 msg=\"starting mlx runner subprocess\" model=qwen3.6:27b-mlx\n"
+             + "slot update_slots: id  0 | task 0 | new prompt, n_ctx_slot = 32768, task.n_tokens = 100\n"
+             + "srv  update_slots: all slots are idle\n")
+            .write(to: ollamaLogs.appendingPathComponent("server.log"), atomically: true, encoding: .utf8)
 
         let before = snapshot(root)
         let now = ISO8601DateFormatter.shared.date(from: "2026-06-19T10:00:00.000Z")!
@@ -37,6 +43,7 @@ final class SafetyNoWriteTests: XCTestCase {
         _ = ActiveSessionsReader(claudeProjectsDir: root.appendingPathComponent("claude"),
                                  codexSessionsDir: root.appendingPathComponent("codex"),
                                  now: { now }, calendar: cal).read()
+        _ = OllamaReader(logURL: ollamaLogs.appendingPathComponent("server.log")).read()
 
         let after = snapshot(root)
         XCTAssertEqual(before, after, "readers must not add, remove, or modify any file")

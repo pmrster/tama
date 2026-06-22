@@ -140,6 +140,7 @@ struct DashboardView: View {
     var managesRefresh = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var showInfo = false
+    @State private var ollamaCollapsed = false
     /// Measured width of the whole widget (pinned window only). Drives `compact`.
     @State private var panelWidth: CGFloat = 0
 
@@ -191,6 +192,7 @@ struct DashboardView: View {
             Divider().overlay(Palette.panelEdge)
             tree
             Divider().overlay(Palette.panelEdge)
+            ollamaStrip
             todayBar
             legend
             Divider().overlay(Palette.panelEdge)
@@ -236,6 +238,92 @@ struct DashboardView: View {
         }
         .frame(height: fixedWidth == nil ? nil : listHeight + 22)
         .frame(maxHeight: fixedWidth == nil ? .infinity : nil)
+    }
+
+    /// A distinct "local model" group for a running Ollama server — separate from the folder-grouped
+    /// agent sessions above (Ollama is an inference server, not a coding session). Mirrors the
+    /// provider→folder tree as Ollama→model: one row per model used this session. Hidden entirely
+    /// when no server is running. Shows no cost: local inference is free.
+    @ViewBuilder
+    private var ollamaStrip: some View {
+        if let o = monitor.state.ollama {
+            VStack(alignment: .leading, spacing: 5) {
+                Button { ollamaCollapsed.toggle() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: ollamaCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: scaled(8), weight: .bold)).foregroundStyle(Palette.dim).frame(width: 8)
+                        Circle().fill(o.busy ? Palette.yellow : Palette.dim).frame(width: 6, height: 6)
+                        Text("Ollama").font(.system(size: scaled(11), weight: .semibold)).foregroundStyle(Palette.text)
+                        Spacer(minLength: 4)
+                        Text(ollamaCountLabel(o)).font(.system(size: scaled(9.5), design: .monospaced))
+                            .foregroundStyle(Palette.dim).fixedSize()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if !ollamaCollapsed {
+                    if o.models.isEmpty {
+                        Text("running · no model loaded").font(.system(size: scaled(9.5), design: .monospaced))
+                            .foregroundStyle(Palette.dim).padding(.leading, 14)
+                    } else {
+                        ForEach(o.models) { ollamaModelRow($0) }
+                    }
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            Divider().overlay(Palette.panelEdge)
+        }
+    }
+
+    private func ollamaCountLabel(_ o: OllamaStatus) -> String {
+        let n = o.models.count
+        return (n == 1 ? "1 model" : "\(n) models") + " · local · free"
+    }
+
+    @ViewBuilder
+    private func ollamaModelRow(_ m: OllamaModelActivity) -> some View {
+        let active = m.active(now: monitor.state.lastUpdated, within: AgentMonitor.activeWindow)
+        let tint = m.busy ? Palette.yellow : (active ? Palette.green : Palette.dim)
+        HStack(spacing: 5) {
+            Circle().fill(tint).frame(width: 5, height: 5).fixedSize()
+            Text(m.model).font(.system(size: scaled(10.5), design: .monospaced))
+                .foregroundStyle(Palette.text).lineLimit(1).truncationMode(.middle)
+            if let frac = m.contextFraction {
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Palette.track).frame(width: 16, height: 4)
+                    Capsule().fill(frac >= 0.9 ? Palette.warn : tint).frame(width: max(2, 16 * frac), height: 4)
+                }
+            }
+            Spacer(minLength: 4)
+            Text(ollamaMetrics(m)).font(.system(size: scaled(9), design: .monospaced))
+                .foregroundStyle(Palette.dim).fixedSize()
+        }
+        .padding(.leading, 14)
+        .help(ollamaRowHelp(m))
+    }
+
+    /// Compact per-model metric line: status · (tok/s when busy, else last latency) · chat|embed.
+    private func ollamaMetrics(_ m: OllamaModelActivity) -> String {
+        var parts = [m.busy ? "busy" : "idle"]
+        if m.busy, let tps = m.tokensPerSecond { parts.append("\(Int(tps.rounded())) t/s") }
+        else if let lat = m.lastLatency { parts.append(formatDuration(lat)) }
+        if m.kind != .unknown { parts.append(m.kind == .embed ? "embed" : "chat") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func ollamaRowHelp(_ m: OllamaModelActivity) -> String {
+        var bits = [m.model, m.current ? "loaded" : "used this session"]
+        if let w = m.contextWindow { bits.append("ctx \(formatTokens(m.contextTokens ?? 0))/\(formatTokens(w))") }
+        if m.requestCount > 0 { bits.append("\(m.requestCount) req") }
+        if let tps = m.tokensPerSecond { bits.append("\(Int(tps.rounded())) tok/s") }
+        return bits.joined(separator: " · ")
+    }
+
+    /// Human duration for a request's wall time: `2.0s`, `200ms`, `120µs`.
+    private func formatDuration(_ t: TimeInterval) -> String {
+        if t >= 1 { return String(format: "%.1fs", t) }
+        if t >= 0.001 { return "\(Int((t * 1000).rounded()))ms" }
+        return "\(Int((t * 1_000_000).rounded()))µs"
     }
 
     private var header: some View {

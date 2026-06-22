@@ -12,6 +12,8 @@ public final class AgentMonitor: ObservableObject {
     }
 
     private let reader: ActivityScanning
+    private let presenceScanner: OllamaPresenceScanning
+    private let ollamaReader: OllamaReading
     private let estimator: CostEstimator
     private let nowProvider: () -> Date
     private let runsInBackground: Bool
@@ -27,8 +29,12 @@ public final class AgentMonitor: ObservableObject {
     public init(reader: ActivityScanning, now: @escaping () -> Date = { Date() },
                 runsInBackground: Bool = true, estimator: CostEstimator = CostEstimator(),
                 moodEngine: MoodEngine = MoodEngine(),
-                catStateStore: CatStateStore = .applicationSupport()) {
+                catStateStore: CatStateStore = .applicationSupport(),
+                presenceScanner: OllamaPresenceScanning = SysctlProcessScanner(),
+                ollamaReader: OllamaReading = OllamaReader()) {
         self.reader = reader
+        self.presenceScanner = presenceScanner
+        self.ollamaReader = ollamaReader
         self.estimator = estimator
         self.nowProvider = now
         self.runsInBackground = runsInBackground
@@ -44,20 +50,40 @@ public final class AgentMonitor: ObservableObject {
     public func refresh() {
         let now = nowProvider()
         let window = self.window
-        guard runsInBackground else { apply(reader.scan(window: window), now: now); return }
+        guard runsInBackground else {
+            apply(reader.scan(window: window), ollama: scanOllama(), now: now); return
+        }
         if inFlight { return }                          // skip overlapping scans
         inFlight = true
         let reader = self.reader
+        let scanOllama = self.scanOllama   // captured closures touch no main-actor state
         ioQueue.async { [weak self] in
             let activity = reader.scan(window: window)
+            let ollama = scanOllama()
             DispatchQueue.main.async {
-                self?.apply(activity, now: now)
+                self?.apply(activity, ollama: ollama, now: now)
                 self?.inFlight = false
             }
         }
     }
 
-    private func apply(_ activity: Activity, now: Date) {
+    /// Detects the local Ollama server (process table) and enriches it from `server.log`.
+    /// Captured as a value so it can run off the main actor; reads no `@MainActor` state.
+    private nonisolated var scanOllama: @Sendable () -> OllamaStatus? {
+        let scanner = presenceScanner, reader = ollamaReader
+        return { Self.ollamaState(presence: OllamaPresence.isRunning(in: scanner.ollamaProcesses()),
+                                  enrichment: reader.read()) }
+    }
+
+    /// Gates the tile: hidden unless the server is running; otherwise running + log enrichment.
+    public nonisolated static func ollamaState(presence: Bool, enrichment: OllamaStatus?) -> OllamaStatus? {
+        guard presence else { return nil }
+        var status = enrichment ?? OllamaStatus()
+        status.running = true
+        return status
+    }
+
+    private func apply(_ activity: Activity, ollama: OllamaStatus?, now: Date) {
         var usage: [Provider: UsageStats] = [:]
         for (provider, tokens) in activity.totals {
             // Price each model's tokens at its own tier rate, then sum. Falls back to the rolled-up
@@ -79,7 +105,7 @@ public final class AgentMonitor: ObservableObject {
             catStateStore.save(newCatState)
         }
         state = AppState(sessions: [], usage: usage, lastUpdated: now,
-                         activeSessions: activity.sessions, mood: mood)
+                         activeSessions: activity.sessions, mood: mood, ollama: ollama)
     }
 
     public func start(interval: TimeInterval = 7) {

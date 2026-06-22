@@ -182,10 +182,13 @@ public struct AppState: Sendable, Equatable {
     public let lastUpdated: Date
     public let activeSessions: [SessionInfo]
     public let mood: Mood
+    /// Local Ollama server, when one is running. Nil hides the tile (not a coding-agent session).
+    public let ollama: OllamaStatus?
     public init(sessions: [AgentSession], usage: [Provider: UsageStats], lastUpdated: Date,
-                activeSessions: [SessionInfo] = [], mood: Mood = .napping) {
+                activeSessions: [SessionInfo] = [], mood: Mood = .napping,
+                ollama: OllamaStatus? = nil) {
         self.sessions = sessions; self.usage = usage; self.lastUpdated = lastUpdated
-        self.activeSessions = activeSessions; self.mood = mood
+        self.activeSessions = activeSessions; self.mood = mood; self.ollama = ollama
     }
     public static let empty = AppState(sessions: [], usage: [:], lastUpdated: .distantPast)
 }
