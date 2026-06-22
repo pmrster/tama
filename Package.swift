@@ -13,6 +13,10 @@ let package = Package(
             name: "Tama",
             dependencies: ["TamaCore"]
         ),
+        .executableTarget(
+            name: "TamaCLI",
+            dependencies: ["TamaCore"]
+        ),
         .testTarget(
             name: "TamaCoreTests",
             dependencies: ["TamaCore"]
