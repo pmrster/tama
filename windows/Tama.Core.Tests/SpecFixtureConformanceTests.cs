@@ -69,4 +69,32 @@ public sealed class SpecFixtureConformanceTests
         Assert.AreEqual(e.GetProperty("title").GetString(), parsed.Title);
         Assert.AreEqual(e.GetProperty("messages").GetInt32(), parsed.Messages);
     }
+
+    [TestMethod]
+    public void Gemini_fixture_produces_expected_values()
+    {
+        var fixtures = FixtureLocator.FixturesDir();
+        using var expectedDoc = JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(fixtures, "expected.json")));
+        var e = expectedDoc.RootElement.GetProperty("gemini");
+
+        var sessions = GeminiReader.Read(Path.Combine(fixtures, "gemini"));
+        Assert.AreEqual(1, sessions.Count);
+        Assert.AreEqual(e.GetProperty("folder").GetString(), sessions[0].Folder);
+    }
+
+    [TestMethod]
+    public void Antigravity_fixture_produces_expected_values()
+    {
+        var fixtures = FixtureLocator.FixturesDir();
+        using var expectedDoc = JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(fixtures, "expected.json")));
+        var e = expectedDoc.RootElement.GetProperty("antigravity");
+
+        var sessions = AntigravityReader.Read(Path.Combine(fixtures, "antigravity", "history.jsonl"));
+        Assert.AreEqual(1, sessions.Count);
+        Assert.AreEqual(e.GetProperty("folder").GetString(), sessions[0].Folder);
+        Assert.AreEqual(e.GetProperty("lastActivityEpochSeconds").GetInt64(),
+            sessions[0].LastActivity.ToUnixTimeSeconds());
+    }
 }
