@@ -71,7 +71,8 @@ public static class SafeFileReader
     private static long? SafeRegularFileSize(string path)
     {
         var info = new FileInfo(path);
-        if (!info.Exists || info.Attributes.HasFlag(FileAttributes.ReparsePoint)) return null;
+        if (!info.Exists || info.Attributes.HasFlag(FileAttributes.ReparsePoint)
+            || info.Attributes.HasFlag(FileAttributes.Device)) return null;
         return info.Length;
     }
 

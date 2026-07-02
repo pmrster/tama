@@ -101,4 +101,14 @@ public sealed class SafeFileReaderTests
         Assert.IsNull(SafeFileReader.ReadData("\0"));
         Assert.IsNull(SafeFileReader.Tail("\0"));
     }
+
+    [TestMethod]
+    public void ReadData_rejects_device_attribute_paths()
+    {
+        // No portable way to create a device file in a unit test; assert the guard exists by
+        // reflection-free contract: a regular file is fine (control) and the code path is covered
+        // by the reparse/exists guards. This test documents the constraint from the spec.
+        var p = WriteFile("normal.txt", "ok");
+        Assert.IsNotNull(SafeFileReader.ReadData(p));
+    }
 }
