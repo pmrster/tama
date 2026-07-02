@@ -1,0 +1,19 @@
+{
+  "scanNow": "2026-06-19T12:00:00Z",
+  "claude": {
+    "folder": "/Example/Code/myapp", "project": "myapp",
+    "tokens": 10312, "cacheTokens": 10007,
+    "contextTokens": 10140, "contextWindow": 200000,
+    "model": "claude-opus-4-8", "sessionId": "aabbccdd",
+    "title": "Fix login bug", "messages": 5
+  },
+  "codex": {
+    "folder": "/Example/Code/widget", "project": "widget",
+    "tokens": 15916, "cacheTokens": 4992,
+    "contextTokens": 8120, "contextWindow": 272000,
+    "model": "gpt-5-codex", "sessionId": "019eddab",
+    "title": "add dark mode toggle", "messages": 2
+  },
+  "gemini": { "folder": "/Example/Code/site" },
+  "antigravity": { "folder": "/Example/Code/api", "lastActivityEpochSeconds": 1781859600 }
+}
