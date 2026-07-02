@@ -57,7 +57,8 @@ public sealed class AgentMonitor : IDisposable
     public double Cost(SessionInfo s) => _estimator.Cost(s.Breakdown, s.Provider, s.Model);
 
     /// <summary>Scans and publishes the new state. Background mode skips overlapping calls;
-    /// runsInBackground: false (tests) scans synchronously on the caller's thread.</summary>
+    /// runsInBackground: false (tests) scans synchronously on the caller's thread. With a real
+    /// SynchronizationContext, the inFlight flag clears after the marshalled apply completes.</summary>
     public void Refresh()
     {
         var now = _now();
@@ -74,9 +75,17 @@ public sealed class AgentMonitor : IDisposable
             {
                 var activity = _scanner.Scan(window);
                 var ollama = OllamaState(_presence.IsRunning(), _ollamaReader.Read());
-                Publish(() => Apply(activity, ollama, now));
+                Publish(() =>
+                {
+                    try { Apply(activity, ollama, now); }
+                    finally { Interlocked.Exchange(ref _inFlight, 0); }
+                });
             }
-            finally { Interlocked.Exchange(ref _inFlight, 0); }
+            catch
+            {
+                Interlocked.Exchange(ref _inFlight, 0);
+                throw;
+            }
         });
     }
 
