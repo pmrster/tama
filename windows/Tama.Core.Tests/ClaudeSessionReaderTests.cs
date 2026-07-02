@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using Tama.Core;
 
@@ -91,6 +92,16 @@ public sealed class ClaudeSessionReaderTests
     }
 
     [TestMethod]
+    public void Timestamp_without_fractional_seconds_is_not_usage_bearing()
+    {
+        // Swift's ISO8601DateFormatter (.withInternetDateTime + .withFractionalSeconds) rejects
+        // a second-precision timestamp outright; this line must not become a session at all.
+        var p = WriteLog("s.jsonl",
+            $"{{\"type\":\"assistant\",\"timestamp\":\"2026-06-19T09:00:00Z\",\"cwd\":\"/p\",\"message\":{{\"id\":\"m1\",\"model\":\"claude-opus-4-8\",{Usage100}}}}}");
+        Assert.IsNull(ClaudeSessionReader.ParseFile(p));
+    }
+
+    [TestMethod]
     public void SessionId_falls_back_to_filename_prefix()
     {
         var p = WriteLog("0123456789abcdef.jsonl",
@@ -129,5 +140,24 @@ public sealed class ClaudeSessionReaderTests
         var longPrompt = new string('a', 80) + " tail-word-beyond";
         var cleaned = ClaudeSessionReader.CleanPrompt(longPrompt)!;
         Assert.AreEqual(new string('a', 80) + "…", cleaned); // 80 kept + ellipsis = 81 chars
+    }
+
+    [TestMethod]
+    public void CleanPrompt_caps_by_grapheme_cluster_not_utf16_unit_for_emoji()
+    {
+        // "🐈" is one extended grapheme cluster but two UTF-16 code units (surrogate pair);
+        // 81 of them is UTF-16 length 162 but grapheme length 81 — must truncate to 80 cats,
+        // never mid-surrogate.
+        var emoji81 = string.Concat(Enumerable.Repeat("🐈", 81));
+        var cleaned = ClaudeSessionReader.CleanPrompt(emoji81)!;
+        var expected = string.Concat(Enumerable.Repeat("🐈", 80)) + "…";
+        Assert.AreEqual(expected, cleaned);
+    }
+
+    [TestMethod]
+    public void CleanPrompt_80_emoji_stays_unchanged_despite_utf16_length_160()
+    {
+        var emoji80 = string.Concat(Enumerable.Repeat("🐈", 80));
+        Assert.AreEqual(emoji80, ClaudeSessionReader.CleanPrompt(emoji80));
     }
 }

@@ -5,7 +5,7 @@
     "tokens": 10312, "cacheTokens": 10007,
     "contextTokens": 10140, "contextWindow": 200000,
     "model": "claude-opus-4-8", "sessionId": "aabbccdd",
-    "title": "Fix login bug", "messages": 5
+    "title": "Fix login bug", "messages": 6
   },
   "codex": {
     "folder": "/Example/Code/widget", "project": "widget",

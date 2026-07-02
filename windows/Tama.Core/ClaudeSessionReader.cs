@@ -74,9 +74,7 @@ public static class ClaudeSessionReader
                 firstPrompt = UserPrompt(message);
 
             if (!hasMessage) return;
-            if (StringOf(root, "timestamp") is not { } ts
-                || !DateTimeOffset.TryParse(ts, CultureInfo.InvariantCulture,
-                        DateTimeStyles.AdjustToUniversal, out var date)) return;
+            if (StringOf(root, "timestamp") is not { } ts || !TryParseTimestamp(ts, out var date)) return;
             if (StringOf(root, "cwd") is not { Length: > 0 } cwd) return;
             if (!message.TryGetProperty("usage", out var usage)
                 || usage.ValueKind != JsonValueKind.Object) return;
@@ -144,8 +142,36 @@ public static class ClaudeSessionReader
         if (string.IsNullOrEmpty(t)) return null;
         if (t.StartsWith('<') || t.StartsWith("[Request interrupted", StringComparison.Ordinal)) return null;
         t = string.Join(" ", t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        return t.Length > 80 ? t[..80].TrimEnd() + "…" : t;
+        // Cap by extended grapheme clusters (Swift `t.count`), not UTF-16 code units — an emoji
+        // like "🐈" is one user-perceived character but two UTF-16 units, and slicing by index
+        // could split a surrogate pair mid-character.
+        var info = new StringInfo(t);
+        return info.LengthInTextElements > 80
+            ? info.SubstringByTextElements(0, 80).TrimEnd() + "…"
+            : t;
     }
+
+    /// <summary>
+    /// Mirrors Swift's <c>ISO8601DateFormatter</c> configured with
+    /// <c>.withInternetDateTime, .withFractionalSeconds</c> (ClaudeReader.swift): fractional
+    /// seconds (1-7 digits) and an explicit timezone designator are BOTH required. A bare
+    /// second-precision or offset-less timestamp (e.g. "2026-06-19T09:00:00Z") is rejected,
+    /// not laxly accepted in machine-local time — the line is then not usage-bearing.
+    /// </summary>
+    private static readonly string[] TimestampFormats =
+    {
+        "yyyy-MM-dd'T'HH:mm:ss.fK",
+        "yyyy-MM-dd'T'HH:mm:ss.ffK",
+        "yyyy-MM-dd'T'HH:mm:ss.fffK",
+        "yyyy-MM-dd'T'HH:mm:ss.ffffK",
+        "yyyy-MM-dd'T'HH:mm:ss.fffffK",
+        "yyyy-MM-dd'T'HH:mm:ss.ffffffK",
+        "yyyy-MM-dd'T'HH:mm:ss.fffffffK",
+    };
+
+    private static bool TryParseTimestamp(string ts, out DateTimeOffset date) =>
+        DateTimeOffset.TryParseExact(ts, TimestampFormats, CultureInfo.InvariantCulture,
+            DateTimeStyles.AdjustToUniversal, out date);
 
     private static string? StringOf(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

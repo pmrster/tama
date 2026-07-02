@@ -16,7 +16,9 @@ then fix both implementations against the fixtures.
 
 One JSON object per line. Relevant line shapes:
 
-- `{"type":"summary","summary":"<title>"}` → session title (highest priority).
+- `{"type":"summary","summary":"<title>"}` → session title (highest priority). Multiple
+  `summary` lines can appear in one file; the LAST one wins (both implementations simply
+  overwrite the title on each sighting, in file order).
 - `{"type":"user","isMeta":<bool?>,"timestamp":ISO8601,"cwd":path,"sessionId":uuid,
    "message":{"role":"user","content":string | [{"type":"text","text":...} |
    {"type":"tool_result",...}]}}`
@@ -29,8 +31,13 @@ Rules:
 - **Dedup by `message.id`:** Claude v2.x writes one reply as several lines (one per content
   block) repeating the same `usage`. Count usage AND the message ONCE per id; skip the whole
   line on a repeated id. Assistant lines without an id are counted every time.
+- **Timestamps:** must be internet date-time WITH fractional seconds and an explicit timezone
+  designator (e.g. `2026-06-19T09:00:00.000Z`); lines with other timestamp shapes (no
+  fractional seconds, no offset) are not usage-bearing (Swift `ISO8601DateFormatter`
+  `.withInternetDateTime + .withFractionalSeconds` semantics — both required, no lax fallback).
 - **Cumulative tokens:** sum `input + output + cache_read + cache_creation` per hour bucket
-  (`hourKey = floor(unixSeconds/3600)`). Sidechain lines DO count here.
+  (`hourKey = trunc(unixSeconds/3600)`, i.e. truncation toward zero, not `floor` — the two
+  differ only for timestamps before 1970). Sidechain lines DO count here.
 - **`cacheWrite1h`:** `usage.cache_creation.ephemeral_1h_input_tokens`, tracked as a subset
   of cacheWrite for pricing (1h cache = 2× input rate vs 1.25× for 5m).
 - **Context:** from the LATEST line where `isSidechain != true` (by timestamp, `>=` wins):
@@ -47,7 +54,10 @@ Rules:
 - **Title fallback:** first real user prompt — `message.content` as string, or joined
   `text` blocks; a content array containing any `tool_result` block is NOT a prompt.
   Clean: trim; reject if starts with `<` or `[Request interrupted`; collapse whitespace
-  runs to single spaces; if > 80 chars, cut to 80, trim trailing spaces, append `…`.
+  runs to single spaces; if > 80 chars, cut to 80, trim trailing spaces, append `…`. The
+  80-char cap counts extended grapheme clusters (user-perceived characters, Swift
+  `String.count`), NOT UTF-16 code units — a multi-unit character (e.g. most emoji) is one
+  character toward the cap, and truncation must never split one mid-code-unit.
 
 ## Codex — `<codex-root>/sessions/YYYY/MM/DD/rollout-*.jsonl`
 

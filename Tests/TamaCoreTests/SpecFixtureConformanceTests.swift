@@ -78,6 +78,7 @@ final class SpecFixtureConformanceTests: XCTestCase {
 
         let codex = try XCTUnwrap(sessions.first { $0.provider == .codex })
         XCTAssertEqual(codex.folder, expected.codex.folder)
+        XCTAssertEqual(codex.project, expected.codex.project)
         XCTAssertEqual(codex.tokens, expected.codex.tokens)
         XCTAssertEqual(codex.cacheTokens, expected.codex.cacheTokens)
         XCTAssertEqual(codex.contextTokens, expected.codex.contextTokens)
@@ -94,5 +95,16 @@ final class SpecFixtureConformanceTests: XCTestCase {
         XCTAssertEqual(anti.folder, expected.antigravity.folder)
         let epoch = try XCTUnwrap(expected.antigravity.lastActivityEpochSeconds)
         XCTAssertEqual(anti.lastActivity, Date(timeIntervalSince1970: epoch))
+    }
+
+    /// Pins the reference truncation unit: the 80-char cap counts extended grapheme clusters
+    /// (Swift `String.count`), not UTF-16 code units. "🐈" is one user-perceived character but a
+    /// UTF-16 surrogate pair, so 81 of them is grapheme-length 81 (UTF-16 length 162) — the C#
+    /// port must match this by counting text elements, not slicing by UTF-16 index.
+    func test_userPrompt_caps_by_grapheme_cluster_not_utf16_unit_for_emoji() {
+        let cats81 = String(repeating: "🐈", count: 81)
+        let cats80 = String(repeating: "🐈", count: 80)
+        XCTAssertEqual(ActiveSessionsReader.userPrompt(["content": cats81]), cats80 + "…")
+        XCTAssertEqual(ActiveSessionsReader.userPrompt(["content": cats80]), cats80)
     }
 }

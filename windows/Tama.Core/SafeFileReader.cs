@@ -27,7 +27,7 @@ public static class SafeFileReader
         try
         {
             var size = SafeRegularFileSize(path);
-            if (size is null || size > maxBytes || maxBytes < 0) return null;
+            if (size is null || size > maxBytes || maxBytes < 0 || size > int.MaxValue) return null;
             using var stream = OpenShared(path);
             return ReadUpTo(stream, (int)size.Value);
         }
@@ -42,7 +42,7 @@ public static class SafeFileReader
             var size = SafeRegularFileSize(path);
             if (size is null || maxBytes < 0) return null;
             using var stream = OpenShared(path);
-            var readLength = (int)Math.Min(size.Value, maxBytes);
+            var readLength = (int)Math.Min(size.Value, Math.Min(maxBytes, (long)int.MaxValue));
             stream.Seek(size.Value - readLength, SeekOrigin.Begin);
             return ReadUpTo(stream, readLength);
         }
