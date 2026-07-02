@@ -93,4 +93,12 @@ public sealed class SafeFileReaderTests
         using var writer = new FileStream(p, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
         Assert.IsNotNull(SafeFileReader.ReadData(p)); // must not throw a sharing violation
     }
+
+    [TestMethod]
+    public void Malformed_paths_return_false_or_null_never_throw()
+    {
+        Assert.IsFalse(SafeFileReader.IsSafeDirectory("\0"));
+        Assert.IsNull(SafeFileReader.ReadData("\0"));
+        Assert.IsNull(SafeFileReader.Tail("\0"));
+    }
 }

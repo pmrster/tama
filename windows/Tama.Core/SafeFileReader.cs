@@ -14,8 +14,12 @@ public static class SafeFileReader
 
     public static bool IsSafeDirectory(string path)
     {
-        var info = new DirectoryInfo(path);
-        return info.Exists && !info.Attributes.HasFlag(FileAttributes.ReparsePoint);
+        try
+        {
+            var info = new DirectoryInfo(path);
+            return info.Exists && !info.Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return false; }
     }
 
     public static byte[]? ReadData(string path, long maxBytes = MaxLogBytes)
@@ -27,7 +31,7 @@ public static class SafeFileReader
             using var stream = OpenShared(path);
             return ReadUpTo(stream, (int)size.Value);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
     }
 
     /// <summary>Last maxBytes of the file (whole file if smaller) — tail of a big append-only log.</summary>
@@ -42,7 +46,7 @@ public static class SafeFileReader
             stream.Seek(size.Value - readLength, SeekOrigin.Begin);
             return ReadUpTo(stream, readLength);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
     }
 
     public static void ForEachLine(string path, Action<ReadOnlyMemory<byte>> body, long maxBytes = MaxLogBytes)
