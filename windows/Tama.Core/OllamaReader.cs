@@ -9,7 +9,7 @@ namespace Tama.Core;
 /// Only the log tail is inspected. Activity is attributed by segmenting the log between
 /// runner start/stop events. Mirror of the Swift OllamaReader (spec/log-formats.md, Ollama).
 /// </summary>
-public sealed class OllamaReader
+public sealed class OllamaReader : IOllamaReading
 {
     private const int TailBytes = 256 * 1024;
     private readonly string _logPath;
