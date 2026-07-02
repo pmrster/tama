@@ -1,0 +1,14 @@
+{
+  "claudeCode": {
+    "default": { "input": 5.0, "output": 25.0, "cacheRead": 0.5, "cacheWrite": 6.25, "cacheWrite1h": 10.0 },
+    "models": {
+      "opus":   { "input": 5.0,  "output": 25.0, "cacheRead": 0.5,  "cacheWrite": 6.25,  "cacheWrite1h": 10.0 },
+      "sonnet": { "input": 3.0,  "output": 15.0, "cacheRead": 0.3,  "cacheWrite": 3.75,  "cacheWrite1h": 6.0 },
+      "haiku":  { "input": 1.0,  "output": 5.0,  "cacheRead": 0.1,  "cacheWrite": 1.25,  "cacheWrite1h": 2.0 },
+      "fable":  { "input": 10.0, "output": 50.0, "cacheRead": 1.0,  "cacheWrite": 12.5,  "cacheWrite1h": 20.0 }
+    }
+  },
+  "codex": {
+    "default": { "input": 2.5, "output": 10.0, "cacheRead": 0.25, "cacheWrite": 2.5 }
+  }
+}
