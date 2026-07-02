@@ -175,11 +175,18 @@ public sealed class SpecFixtureConformanceTests
             Assert.AreEqual(ex.GetProperty("tokens").GetInt32(), codex.Tokens);
             Assert.AreEqual(ex.GetProperty("contextTokens").GetInt32(), codex.ContextTokens);
             Assert.AreEqual(ex.GetProperty("contextWindow").GetInt32(), codex.ContextWindow);
+            Assert.AreEqual(ex.GetProperty("cacheTokens").GetInt32(), codex.CacheTokens);
+            Assert.AreEqual(ex.GetProperty("model").GetString(), codex.Model);
+            Assert.AreEqual(ex.GetProperty("sessionId").GetString(), codex.SessionId);
+            Assert.AreEqual(ex.GetProperty("title").GetString(), codex.Title);
+            Assert.AreEqual(ex.GetProperty("messages").GetInt32(), codex.Messages);
 
             Assert.AreEqual(e.GetProperty("gemini").GetProperty("folder").GetString(),
                 sessions.Single(s => s.Provider == Provider.Gemini).Folder);
-            Assert.AreEqual(e.GetProperty("antigravity").GetProperty("folder").GetString(),
-                sessions.Single(s => s.Provider == Provider.Antigravity).Folder);
+            var anti = sessions.Single(s => s.Provider == Provider.Antigravity);
+            Assert.AreEqual(e.GetProperty("antigravity").GetProperty("folder").GetString(), anti.Folder);
+            Assert.AreEqual(e.GetProperty("antigravity").GetProperty("lastActivityEpochSeconds").GetInt64(),
+                anti.LastActivity.ToUnixTimeSeconds());
         }
         finally { Directory.Delete(root, recursive: true); }
     }
