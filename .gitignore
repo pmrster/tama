@@ -53,3 +53,7 @@ assets/cat-dark.png
 
 # Claude Code local worktrees
 .claude/worktrees/
+
+windows/**/bin/
+windows/**/obj/
+*.user
