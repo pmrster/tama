@@ -94,6 +94,30 @@ last activity = `logs.json` mtime, else the subdirectory's mtime. No tokens (all
 Lines `{"workspace":path,"timestamp":msEpoch}` (≤ 16 MiB read). One session per distinct
 workspace, last activity = max timestamp (ms → seconds). No tokens.
 
+## Ollama — server.log (tail ≤ 256 KiB)
+
+No per-line model tag: attribute lines by SEGMENTING between runner events.
+- Start: a line containing `runner subprocess` AND `starting`, with `model=<tag>`
+  (tag = up to the next whitespace). Sets the active AND current model; same tag
+  re-loaded merges into one entry (first-seen order preserved).
+- Stop: a line containing the verbatim `stopping mlx runner subprocess` clears both.
+  (llama.cpp runners that never emit this line simply hand over at the next start.)
+- Unattributed lines (before any start / after a stop) are dropped.
+
+Per-segment accumulation (last value wins unless noted):
+- `n_ctx_slot = <int>` → contextWindow; `task.n_tokens = <int>` → contextTokens;
+  `tg = <float>` → tokensPerSecond.
+- `processing task` → busy=true; `all slots are idle` → busy=false.
+- `[GIN] yyyy/MM/dd - HH:mm:ss | status | <duration> | ip | METHOD "<endpoint>"`:
+  only `/embed*`, `/api/chat`, `/api/generate` count as inference (requestCount+1,
+  chat/embed tally). Duration = Go format (`5.0s`/`200ms`/`µs`|`us`/`ns`) → lastLatency.
+  Timestamp carries no zone: parse in the injected zone → lastActivity.
+- kind = embed if embedCount > chatCount, else chat if chatCount > 0, else unknown.
+
+Output: models sorted current-first, then lastActivity desc. Status lastActivity =
+log file mtime. `running` comes from the process table, not the log.
+Missing/empty log → no status.
+
 ## Scan behavior (window filtering — implemented by the scanner, Plan B for C#)
 
 - A file contributes only if its mtime is in-window (`today` = same local day as `now`;

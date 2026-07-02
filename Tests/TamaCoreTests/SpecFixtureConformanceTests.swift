@@ -107,4 +107,31 @@ final class SpecFixtureConformanceTests: XCTestCase {
         XCTAssertEqual(ActiveSessionsReader.userPrompt(["content": cats81]), cats80 + "…")
         XCTAssertEqual(ActiveSessionsReader.userPrompt(["content": cats80]), cats80)
     }
+
+    func test_ollama_fixture_matches_expected_values() throws {
+        let logURL = Self.fixturesDir.appendingPathComponent("ollama/server.log")
+        let data = try Data(contentsOf: Self.fixturesDir.appendingPathComponent("expected.json"))
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let expected = try XCTUnwrap(root["ollama"] as? [String: Any])
+        let expectedModels = try XCTUnwrap(expected["models"] as? [[String: Any]])
+
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let status = try XCTUnwrap(OllamaReader(logURL: logURL, calendar: utc).read())
+        XCTAssertEqual(status.models.count, expectedModels.count)
+
+        for (model, exp) in zip(status.models, expectedModels) {
+            XCTAssertEqual(model.model, exp["model"] as? String)
+            XCTAssertEqual(model.current, exp["current"] as? Bool)
+            XCTAssertEqual(model.busy, exp["busy"] as? Bool)
+            XCTAssertEqual(model.contextWindow, exp["contextWindow"] as? Int)
+            XCTAssertEqual(model.contextTokens, exp["contextTokens"] as? Int)
+            XCTAssertEqual(model.tokensPerSecond, exp["tokensPerSecond"] as? Double)
+            XCTAssertEqual(try XCTUnwrap(model.lastLatency), try XCTUnwrap(exp["lastLatencySeconds"] as? Double), accuracy: 0.001)
+            XCTAssertEqual(model.kind.rawValue, exp["kind"] as? String)
+            XCTAssertEqual(model.requestCount, exp["requestCount"] as? Int)
+            XCTAssertEqual(try XCTUnwrap(model.lastActivity).timeIntervalSince1970,
+                           Double(try XCTUnwrap(exp["lastActivityEpochSeconds"] as? Int)), accuracy: 0.5)
+        }
+    }
 }

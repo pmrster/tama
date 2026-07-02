@@ -15,5 +15,17 @@
     "title": "add dark mode toggle", "messages": 2
   },
   "gemini": { "folder": "/Example/Code/site" },
-  "antigravity": { "folder": "/Example/Code/api", "lastActivityEpochSeconds": 1781859600 }
+  "antigravity": { "folder": "/Example/Code/api", "lastActivityEpochSeconds": 1781859600 },
+  "ollama": {
+    "models": [
+      { "model": "gemma4:12b-mlx", "current": true, "busy": true,
+        "contextWindow": 8192, "contextTokens": 500, "tokensPerSecond": 80.0,
+        "lastLatencySeconds": 0.2, "kind": "chat", "requestCount": 2,
+        "lastActivityEpochSeconds": 1782156605 },
+      { "model": "qwen3.6:27b-mlx", "current": false, "busy": false,
+        "contextWindow": 32768, "contextTokens": 2000, "tokensPerSecond": 50.0,
+        "lastLatencySeconds": 5.0, "kind": "chat", "requestCount": 1,
+        "lastActivityEpochSeconds": 1782154800 }
+    ]
+  }
 }

@@ -97,4 +97,35 @@ public sealed class SpecFixtureConformanceTests
         Assert.AreEqual(e.GetProperty("lastActivityEpochSeconds").GetInt64(),
             sessions[0].LastActivity.ToUnixTimeSeconds());
     }
+
+    [TestMethod]
+    public void Ollama_fixture_produces_expected_values()
+    {
+        var fixtures = FixtureLocator.FixturesDir();
+        using var expectedDoc = JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(fixtures, "expected.json")));
+        var expectedModels = expectedDoc.RootElement.GetProperty("ollama").GetProperty("models");
+
+        var status = new OllamaReader(Path.Combine(fixtures, "ollama", "server.log"), TimeZoneInfo.Utc).Read();
+        Assert.IsNotNull(status);
+        Assert.AreEqual(expectedModels.GetArrayLength(), status.Models.Count);
+
+        for (var i = 0; i < status.Models.Count; i++)
+        {
+            var m = status.Models[i];
+            var e = expectedModels[i];
+            Assert.AreEqual(e.GetProperty("model").GetString(), m.Model);
+            Assert.AreEqual(e.GetProperty("current").GetBoolean(), m.Current);
+            Assert.AreEqual(e.GetProperty("busy").GetBoolean(), m.Busy);
+            Assert.AreEqual(e.GetProperty("contextWindow").GetInt32(), m.ContextWindow);
+            Assert.AreEqual(e.GetProperty("contextTokens").GetInt32(), m.ContextTokens);
+            Assert.AreEqual(e.GetProperty("tokensPerSecond").GetDouble(), m.TokensPerSecond);
+            Assert.AreEqual(e.GetProperty("lastLatencySeconds").GetDouble(), m.LastLatencySeconds!.Value, 0.001);
+            Assert.AreEqual(e.GetProperty("kind").GetString(),
+                m.Kind.ToString().ToLowerInvariant());
+            Assert.AreEqual(e.GetProperty("requestCount").GetInt32(), m.RequestCount);
+            Assert.AreEqual(e.GetProperty("lastActivityEpochSeconds").GetInt64(),
+                m.LastActivity!.Value.ToUnixTimeSeconds());
+        }
+    }
 }
