@@ -122,4 +122,14 @@ public sealed class OllamaReaderTests
         Assert.IsNull(Reader(Path.Combine(_root, "nope.log")).Read());
         Assert.IsNull(Reader(Fixture()).Read());
     }
+
+    [TestMethod]
+    public void CRLF_log_still_splits_tag_correctly()
+    {
+        var p = Path.Combine(_root, "server.log");
+        File.WriteAllText(p, string.Join("\r\n", Start("m:1"), Gin("19:00:00", "1s", "/api/chat")));
+        var m = Reader(p).Read()!.Models[0];
+        Assert.AreEqual("m:1", m.Model);
+        Assert.AreEqual(1, m.RequestCount);
+    }
 }

@@ -103,7 +103,7 @@ public sealed class SafeFileReaderTests
     }
 
     [TestMethod]
-    public void ReadData_rejects_device_attribute_paths()
+    public void ReadData_device_guard_documented_control_read_succeeds()
     {
         // No portable way to create a device file in a unit test; assert the guard exists by
         // reflection-free contract: a regular file is fine (control) and the code path is covered

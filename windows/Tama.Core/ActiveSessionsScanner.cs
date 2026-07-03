@@ -104,6 +104,8 @@ public sealed class ActiveSessionsScanner : IActivityScanning
         _ => mtime >= now.AddHours(-24),
     };
 
+    // Ambiguous DST midnights resolve to the standard offset (Swift picks the first occurrence) —
+    // divergence confined to zones transitioning at 00:00, one hour, one day/year.
     private DateTimeOffset StartOfDay(DateTimeOffset d)
     {
         var local = TimeZoneInfo.ConvertTime(d, _tz);

@@ -38,6 +38,7 @@ public sealed record SessionInfo(
     /// <summary>The session's display name: title, else short id, else "session".</summary>
     public string DisplayName => Title ?? SessionId ?? "session";
 
+    // Display-only identity; casing differs from Swift's rawValue ("ClaudeCode" vs "claudeCode") — never serialize cross-platform.
     public string Id => $"{Provider}:{Folder}:{SessionId}";
 }
 

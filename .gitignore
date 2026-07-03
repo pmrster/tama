@@ -17,6 +17,7 @@ docs/
 state/
 
 *.log
+!spec/fixtures/**/*.log
 *.tmp
 *.swp
 *.swo

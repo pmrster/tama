@@ -112,6 +112,7 @@ public sealed class OllamaReader : IOllamaReading
         var stamp = fields[0].Replace("[GIN]", "", StringComparison.Ordinal).Trim();
         if (DateTime.TryParseExact(stamp, "yyyy/MM/dd - HH:mm:ss", CultureInfo.InvariantCulture,
                 DateTimeStyles.None, out var local))
+            // Same DST-ambiguity caveat as ActiveSessionsScanner.StartOfDay.
             seg.LastActivity = new DateTimeOffset(local, _tz.GetUtcOffset(local));
     }
 
@@ -123,7 +124,7 @@ public sealed class OllamaReader : IOllamaReading
         var i = line.IndexOf("model=", StringComparison.Ordinal);
         if (i < 0) return null;
         var rest = line[(i + "model=".Length)..];
-        var end = rest.AsSpan().IndexOfAny(' ', '\t');
+        var end = rest.AsSpan().IndexOfAny(stackalloc char[] { ' ', '\t', '\r' });
         var tag = end < 0 ? rest : rest[..end];
         return tag.Length == 0 ? null : tag;
     }
