@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tama.Core", "Tama.Core\Tama
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tama.Core.Tests", "Tama.Core.Tests\Tama.Core.Tests.csproj", "{82D694A2-8B70-4C58-B0AE-FADAF21E8575}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tama.Tray", "Tama.Tray\Tama.Tray.csproj", "{4789A4EF-EEF9-414C-9F23-0F55B6D2B882}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{82D694A2-8B70-4C58-B0AE-FADAF21E8575}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{82D694A2-8B70-4C58-B0AE-FADAF21E8575}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{82D694A2-8B70-4C58-B0AE-FADAF21E8575}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4789A4EF-EEF9-414C-9F23-0F55B6D2B882}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4789A4EF-EEF9-414C-9F23-0F55B6D2B882}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4789A4EF-EEF9-414C-9F23-0F55B6D2B882}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4789A4EF-EEF9-414C-9F23-0F55B6D2B882}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

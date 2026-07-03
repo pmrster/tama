@@ -1,0 +1,40 @@
+name: windows
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - "spec/**"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - "spec/**"
+      - ".github/workflows/windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: .NET build + test
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: dotnet build windows/Tama.sln -c Release
+
+      - name: Test
+        run: dotnet test windows/Tama.sln -c Release --no-build
+
+  mac-swift:
+    name: Swift tests
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: swift test
