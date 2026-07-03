@@ -7,6 +7,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- App.xaml stays an ordinary ApplicationDefinition (unchanged, still auto-generates its own
+         ignored Main in App.g.cs); StartupObject just tells csc to use Program.Main instead, so
+         bootstrap logic (AgentMonitor wiring, tray icon, popover) lives in a plain, readable
+         Program.cs rather than App.xaml.cs's OnStartup override. -->
+    <StartupObject>Tama.Tray.Program</StartupObject>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tama.Core\Tama.Core.csproj" />
+  </ItemGroup>
 
 </Project>
