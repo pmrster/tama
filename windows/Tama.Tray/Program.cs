@@ -66,7 +66,7 @@ public static class Program
         {
             if (popover is not null)
             {
-                popover.Close();   // triggers popover.Closed below (Deactivated also routes here)
+                popover.CloseSafely();   // triggers popover.Closed below (Deactivated also routes here)
                 return;
             }
             popover = new PopoverWindow(monitor);

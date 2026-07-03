@@ -14,18 +14,31 @@ namespace Tama.Tray;
 public partial class PopoverWindow : Window
 {
     private readonly AgentMonitor _monitor;
+    private bool _closing;
 
     public PopoverWindow(AgentMonitor monitor)
     {
         _monitor = monitor;
         InitializeComponent();
 
-        Deactivated += (_, _) => Close();
+        Deactivated += (_, _) => { if (!_closing) Close(); };
         _monitor.StateChanged += OnStateChanged;
         Closed += (_, _) => _monitor.StateChanged -= OnStateChanged;
         Loaded += (_, _) => PositionNearTray();
 
         Render(_monitor.State);
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        _closing = true;
+        base.OnClosing(e);
+    }
+
+    public void CloseSafely()
+    {
+        if (!_closing)
+            Close();
     }
 
     private void OnStateChanged(AppState state) => Dispatcher.Invoke(() => Render(state));

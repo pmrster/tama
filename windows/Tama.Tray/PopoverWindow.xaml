@@ -9,11 +9,10 @@
         ShowInTaskbar="False"
         Topmost="True"
         SizeToContent="Height"
-        Width="360">
-    <!-- Fixed width 360 (spec §1a's popover-width concept, unified with the pinned-window default
-         instead of porting the mac popover's separate 300pt — task-2-brief.md's explicit choice
-         for this port); height sizes to content, capped indirectly by listHeight-driven content
-         once Task 4's DashboardView replaces the placeholder StackPanel below (spec §2). -->
+        Width="300">
+    <!-- Fixed width 300 (spec §1a: mac popover width); height sizes to content, capped indirectly
+         by listHeight-driven content once Task 4's DashboardView replaces the placeholder StackPanel
+         below (spec §2). -->
     <Border Background="#F7F4EF" BorderBrush="#E0DAD0" BorderThickness="1" CornerRadius="8">
         <StackPanel Margin="14,11,14,8">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
