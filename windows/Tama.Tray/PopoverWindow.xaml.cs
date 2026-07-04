@@ -54,6 +54,7 @@ public partial class PopoverWindow : Window
             ? System.Windows.Media.Color.FromRgb(0xF3, 0xBD, 0x4F)   // Palette.yellow
             : System.Windows.Media.Color.FromRgb(0x6E, 0x65, 0x5C)); // Palette.dim
         StatusText.Text = $"Mood: {state.Mood.Kind} — full dashboard lands in Task 4.";
+        Pet.SetMood(state.Mood);
     }
 
     /// <summary>Positions the popover's bottom-right corner just above the taskbar tray corner

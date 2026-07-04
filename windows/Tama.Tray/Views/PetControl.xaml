@@ -1,0 +1,32 @@
+<UserControl x:Class="Tama.Tray.Views.PetControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Height="34"
+             ClipToBounds="True">
+    <!-- Windows port of the pixel cat strip (PetView.swift): frame(height: 34).clipped()
+         (PetView.swift:141-142). Horizontal padding (14) comes from the parent StackPanel's own
+         Margin in PopoverWindow.xaml, matching how PetView.swift receives its horizontal padding
+         from its *caller* (MenuBarView.swift:187-191) rather than adding its own — this control
+         owns only its vertical padding (applied by the caller as Margin="0,2,0,6", mirroring
+         MenuBarView.swift's .padding(.top, 2).padding(.bottom, 6)). -->
+    <Grid>
+        <Rectangle Fill="#4D453D" Height="1" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" />
+        <Canvas>
+            <Image x:Name="SpriteImage" Width="48" Height="30"
+                   RenderOptions.BitmapScalingMode="NearestNeighbor"
+                   RenderTransformOrigin="0.5,0.5">
+                <Image.RenderTransform>
+                    <ScaleTransform x:Name="FlipTransform" ScaleX="1" ScaleY="1" />
+                </Image.RenderTransform>
+            </Image>
+            <TextBlock x:Name="MeowText" Text="meow~" FontFamily="Consolas" FontWeight="Bold"
+                       FontSize="7" Foreground="#F3BD4F" Opacity="0.85" Visibility="Collapsed" />
+            <TextBlock x:Name="Z0Text" Text="z" FontFamily="Consolas" FontWeight="Black"
+                       Foreground="#F3BD4F" Visibility="Collapsed" />
+            <TextBlock x:Name="Z1Text" Text="z" FontFamily="Consolas" FontWeight="Black"
+                       Foreground="#F3BD4F" Visibility="Collapsed" />
+            <TextBlock x:Name="Z2Text" Text="z" FontFamily="Consolas" FontWeight="Black"
+                       Foreground="#F3BD4F" Visibility="Collapsed" />
+        </Canvas>
+    </Grid>
+</UserControl>
