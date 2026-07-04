@@ -1,32 +1,31 @@
 using System.Windows;
-using System.Windows.Media;
-using Tama.Core;
+using Tama.Core.Ui;
+using Tama.Tray.Views;
 
 namespace Tama.Tray;
 
 /// <summary>
 /// The transient, focus-loss-closing popover shell (spec §1a: borderless, AllowsTransparency,
 /// Topmost while open, Deactivated closes it — the WPF analog of NSPopover's
-/// `.behavior = .transient`). Task 2 scope is the chrome, geometry, and monitor-driven summary
-/// content below; the full provider/folder/session tree (spec §2) replaces the placeholder
-/// StackPanel content in Task 4's DashboardView without needing to touch this window's shell.
+/// `.behavior = .transient`). Hosts the real dashboard content (spec §2/§3/§4) via
+/// <see cref="Views.DashboardView"/>; this window itself owns only the popover chrome/geometry
+/// (border, transparency, tray-corner positioning, focus-loss dismissal).
 /// </summary>
 public partial class PopoverWindow : Window
 {
-    private readonly AgentMonitor _monitor;
     private bool _closing;
 
-    public PopoverWindow(AgentMonitor monitor)
+    public PopoverWindow(DashboardViewModel vm, Action onAbout, Action onQuit)
     {
-        _monitor = monitor;
         InitializeComponent();
 
-        Deactivated += (_, _) => { if (!_closing) Close(); };
-        _monitor.StateChanged += OnStateChanged;
-        Closed += (_, _) => _monitor.StateChanged -= OnStateChanged;
-        Loaded += (_, _) => PositionNearTray();
+        // Retint chrome + DashboardView's Palette-bound brushes for the current OS theme before
+        // first paint (spec §2-Palette; Task 5 will call this again on a live theme-change signal).
+        Palette.Apply(Palette.IsSystemDark());
+        Dashboard.Initialize(vm, onAbout, onQuit);
 
-        Render(_monitor.State);
+        Deactivated += (_, _) => { if (!_closing) Close(); };
+        Loaded += (_, _) => PositionNearTray();
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -39,22 +38,6 @@ public partial class PopoverWindow : Window
     {
         if (!_closing)
             Close();
-    }
-
-    private void OnStateChanged(AppState state) => Dispatcher.Invoke(() => Render(state));
-
-    private void Render(AppState state)
-    {
-        var activeNow = _monitor.ActiveCount();
-        HeaderText.Text = activeNow == 1 ? "1 agent active" : $"{activeNow} agents active";
-        // Color is ambiguous unqualified here (System.Drawing.Color is also in scope via
-        // UseWindowsForms' implicit global using) — see TrayIcon.cs's BuildIcon for the same
-        // System.Drawing-vs-WPF pattern.
-        StatusDot.Fill = new SolidColorBrush(activeNow > 0
-            ? System.Windows.Media.Color.FromRgb(0xF3, 0xBD, 0x4F)   // Palette.yellow
-            : System.Windows.Media.Color.FromRgb(0x6E, 0x65, 0x5C)); // Palette.dim
-        StatusText.Text = $"Mood: {state.Mood.Kind} — full dashboard lands in Task 4.";
-        Pet.SetMood(state.Mood);
     }
 
     /// <summary>Positions the popover's bottom-right corner just above the taskbar tray corner

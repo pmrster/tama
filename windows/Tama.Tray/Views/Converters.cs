@@ -21,7 +21,6 @@ public static class Converters
     public static readonly IValueConverter BoolAccentPill = new BoolAccentPillConverter();
     public static readonly IValueConverter OllamaDot = new OllamaDotConverter();
     public static readonly IValueConverter NullToVisible = new NullToVisibleConverter();
-    public static readonly IValueConverter TrueToCollapsed = new TrueToCollapsedConverter();
     public static readonly IValueConverter Chevron = new ChevronConverter();
     public static readonly IMultiValueConverter LiveDot = new LiveDotConverter();
     public static readonly IMultiValueConverter MetricBrush = new MetricBrushConverter();
@@ -93,15 +92,6 @@ internal sealed class NullToVisibleConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
         value is null || (value is string s && s.Length == 0) ? Visibility.Collapsed : Visibility.Visible;
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
-}
-
-/// <summary>bool: true -> Collapsed, false -> Visible (e.g. hide "no model loaded" once models exist).</summary>
-internal sealed class TrueToCollapsedConverter : IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        value is true ? Visibility.Collapsed : Visibility.Visible;
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }

@@ -11,20 +11,12 @@
         Topmost="True"
         SizeToContent="Height"
         Width="300">
-    <!-- Fixed width 300 (spec §1a: mac popover width); height sizes to content, capped indirectly
-         by listHeight-driven content once Task 4's DashboardView replaces the placeholder StackPanel
-         below (spec §2). -->
-    <Border Background="#F7F4EF" BorderBrush="#E0DAD0" BorderThickness="1" CornerRadius="8">
-        <StackPanel Margin="14,11,14,8">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Ellipse x:Name="StatusDot" Width="7" Height="7" Margin="0,0,8,0" Fill="#6E655C" />
-                <TextBlock x:Name="HeaderText" FontSize="14" FontWeight="Bold" Foreground="#1C1A17" />
-            </StackPanel>
-            <TextBlock x:Name="StatusText" FontSize="11" Foreground="#6E655C" Margin="0,6,0,0" TextWrapping="Wrap" />
-            <!-- Task 3: pixel-cat strip (spec §2 PetView(mood:), :187-191). Task 4's real
-                 provider/folder/session tree (spec §2) lands between StatusText and this strip
-                 without needing to touch PetControl itself. -->
-            <views:PetControl x:Name="Pet" Margin="0,2,0,6" />
-        </StackPanel>
+    <!-- Fixed width 300 (spec §1a: mac popover width); height sizes to content, driven by
+         DashboardView's own listHeight-derived ScrollViewer height (spec §2, PopoverListHeight).
+         Chrome brushes come from Palette (theme-aware), never a hardcoded hex, so light/dark
+         retinting via Palette.Apply (see code-behind) actually takes effect here. -->
+    <Border Background="{x:Static views:Palette.Panel}" BorderBrush="{x:Static views:Palette.PanelEdge}"
+            BorderThickness="1" CornerRadius="8">
+        <views:DashboardView x:Name="Dashboard" />
     </Border>
 </Window>

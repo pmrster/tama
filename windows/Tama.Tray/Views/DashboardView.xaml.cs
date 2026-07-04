@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using Microsoft.Win32;
 using Tama.Core;
 using Tama.Core.Ui;
 
@@ -13,29 +12,23 @@ namespace Tama.Tray.Views;
 /// WPF port of DashboardView.swift (planc-ui-spec.md §2/§3/§4) — the popover's real content.
 /// Binds directly to a long-lived <see cref="DashboardViewModel"/> (constructed once alongside
 /// AgentMonitor in Program.cs, NOT per popover open/close — see that class's doc comment for why).
-/// Two pieces of state are deliberately kept here instead of in the VM, mirroring the Swift
-/// source's per-view @State that resets on every re-host (spec §4/§7 note 7):
-/// <see cref="_ollamaCollapsed"/> and the "Launch at login" checkbox state (itself OS-authoritative,
-/// re-read fresh — spec §7 note 3 — via the Run registry key rather than SMAppService).
+/// <see cref="_ollamaCollapsed"/> is deliberately kept here instead of in the VM, mirroring the
+/// Swift source's per-view @State that resets on every re-host (spec §4/§7 note 7).
+/// The "Launch at login" checkbox is chrome-only for now: Task 6 owns the real read/write behind
+/// an <c>IRunAtLogin</c> interface (task-6-brief.md); no registry access happens from this view.
 /// </summary>
 public partial class DashboardView : System.Windows.Controls.UserControl   // fully qualified: UseWPF+UseWindowsForms both export a UserControl (CS0104)
 {
-    // HKCU Run key — Windows' closest equivalent to macOS SMAppService.mainApp (spec §7 note 3).
-    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValueName = "Tama";
-
     private DashboardViewModel? _vm;
     private Action? _onAbout;
     private Action? _onQuit;
     private bool _ollamaCollapsed;
-    private bool _launchAtLogin;
 
     public DashboardView()
     {
         InitializeComponent();
         BuildLegend();
         BuildInfoPopover();
-        _launchAtLogin = ReadLaunchAtLogin();
         RenderLaunchAtLogin();
     }
 
@@ -126,58 +119,15 @@ public partial class DashboardView : System.Windows.Controls.UserControl   // fu
 
     // ---- footer ----
 
-    private void LaunchAtLogin_Click(object sender, MouseButtonEventArgs e)
-    {
-        _launchAtLogin = !_launchAtLogin;
-        WriteLaunchAtLogin(_launchAtLogin);
-        RenderLaunchAtLogin();
-    }
-
     private void About_Click(object sender, MouseButtonEventArgs e) => _onAbout?.Invoke();
     private void Quit_Click(object sender, MouseButtonEventArgs e) => _onQuit?.Invoke();
 
+    /// <summary>Task 6 owns the real on/off state (via IRunAtLogin); until then this always
+    /// renders unchecked/dim — the checkbox itself is IsEnabled="False" in XAML.</summary>
     private void RenderLaunchAtLogin()
     {
-        LaunchAtLoginIcon.Text = _launchAtLogin ? "☑" : "☐";
-        LaunchAtLoginIcon.Foreground = _launchAtLogin ? Palette.Yellow : Palette.Dim;
-    }
-
-    /// <summary>OS-authoritative, read fresh rather than cached (spec §7 note 3) — the HKCU Run
-    /// key is Windows' equivalent of SMAppService.mainApp.status.</summary>
-    private static bool ReadLaunchAtLogin()
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            return key?.GetValue(RunValueName) is string;
-        }
-        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    private static void WriteLaunchAtLogin(bool enabled)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
-            if (key is null) return;
-            if (enabled)
-            {
-                var exe = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
-                key.SetValue(RunValueName, $"\"{exe}\"");
-            }
-            else
-            {
-                key.DeleteValue(RunValueName, throwOnMissingValue: false);
-            }
-        }
-        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException)
-        {
-            // Best-effort: leave the checkbox state as the user requested even if the registry
-            // write is denied (matches SMAppService's own fire-and-forget try? on the Swift side).
-        }
+        LaunchAtLoginIcon.Text = "☐";
+        LaunchAtLoginIcon.Foreground = Palette.Dim;
     }
 
     // ---- static text built from the VM's own constants, so it can never drift from them ----

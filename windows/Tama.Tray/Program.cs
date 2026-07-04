@@ -1,4 +1,5 @@
 using Tama.Core;
+using Tama.Core.Ui;
 
 namespace Tama.Tray;
 
@@ -60,6 +61,12 @@ public static class Program
             runsInBackground: true,
             syncContext: syncContext);
 
+        // Constructed once alongside AgentMonitor, NOT per popover open/close — DashboardViewModel's
+        // own doc comment requires this: it owns collapse/expand sets, active-only filter, and
+        // metric-cycle selections that must persist across the transient popover being closed and
+        // reopened (mirrors the Swift port's process-lifetime UIState.shared, spec §7 note 7).
+        var dashboardVm = new DashboardViewModel(monitor);
+
         PopoverWindow? popover = null;
 
         void TogglePopover()
@@ -69,7 +76,7 @@ public static class Program
                 popover.CloseSafely();   // triggers popover.Closed below (Deactivated also routes here)
                 return;
             }
-            popover = new PopoverWindow(monitor);
+            popover = new PopoverWindow(dashboardVm, ShowAbout, app.Shutdown);
             popover.Closed += (_, _) =>
             {
                 popover = null;

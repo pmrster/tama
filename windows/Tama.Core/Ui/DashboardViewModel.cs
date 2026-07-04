@@ -287,7 +287,7 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
 
     public string ActiveOnlyTooltip => _activeOnly
         ? "Active-now filter is ON — showing only sessions with activity in the last 15 min. Click to show all of today."
-        : "Active-only filter — show only sessions active in the last 15 min (hide idle ones). Click to turn on.";
+        : "Active-now filter — show only sessions active in the last 15 min (hide idle ones). Click to turn on.";
 
     public string ExpandCollapseAllTooltip => AnyFolderExpanded ? "Collapse all folders" : "Expand all folders";
 
@@ -593,7 +593,7 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
         if (s.Messages > 0) lines.Add($"Messages: {s.Messages} (conversation length — the count Claude /resume shows)");
         if (s.ContextTokens > 0)
         {
-            var pct = s.ContextFraction is { } f ? $" ({(int)Math.Round(f * 100)}% full)" : "";
+            var pct = s.ContextFraction is { } f ? $" ({RoundInt(f * 100)}% full)" : "";
             var win = s.ContextWindow > 0 ? $" / {Formatters.FormatTokens(s.ContextWindow)}" : "";
             lines.Add($"Context now: {Formatters.FormatTokens(s.ContextTokens)}{win}{pct}");
         }
@@ -610,7 +610,7 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
     /// <summary>Context-window gauge tooltip (MenuBarView.swift:654-659, contextHelp).</summary>
     private static string ContextHelp(SessionInfo s)
     {
-        var pct = s.ContextFraction is { } f ? $" ({(int)Math.Round(f * 100)}%)" : "";
+        var pct = s.ContextFraction is { } f ? $" ({RoundInt(f * 100)}%)" : "";
         var win = s.ContextWindow > 0 ? $" / {Formatters.FormatTokens(s.ContextWindow)}" : "";
         return $"Context window: {Formatters.FormatTokens(s.ContextTokens)}{win}{pct} in use right now.\n" +
             "Live conversation size — not today's cumulative tokens (see the session tooltip / TODAY).";

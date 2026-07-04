@@ -456,8 +456,10 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
-                        MouseLeftButtonDown="LaunchAtLogin_Click"
+            <!-- launch-at-login: visible so the footer shape matches §2g, but inert — Task 6 owns
+                 the real read/write behind an IRunAtLogin interface (see task-6-brief.md); wiring
+                 a direct HKCU Run-key write here would be out of this task's scope. -->
+            <StackPanel Orientation="Horizontal" IsEnabled="False"
                         ToolTip="{x:Static ui:DashboardViewModel.LaunchAtLoginTooltip}">
                 <TextBlock x:Name="LaunchAtLoginIcon" FontSize="11" VerticalAlignment="Center" />
                 <TextBlock Margin="6,0,0,0" FontSize="11" VerticalAlignment="Center"
