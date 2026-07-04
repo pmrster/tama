@@ -10,7 +10,10 @@ namespace Tama.Tray;
 /// of mac's <c>PinnedPanel</c>. Constructed once alongside the popover/settings windows
 /// (Program.cs), reused across pin/unpin via a hide-not-destroy Closing handler (same pattern as
 /// <see cref="Views.SettingsWindow"/>), remembering its frame (position + size) across toggles —
-/// and across app relaunches — via <see cref="AppSettingsViewModel.PinnedFrame"/>.
+/// and across app relaunches — via <see cref="AppSettingsViewModel.PinnedFrame"/>. The restored
+/// frame is clamped to the current virtual-screen bounds via <see cref="WindowFrameClamp"/> before
+/// being applied, so a monitor-configuration change since the frame was saved can't strand the
+/// window off-screen.
 /// </summary>
 public partial class PinnedWindow : Window
 {
@@ -54,12 +57,23 @@ public partial class PinnedWindow : Window
 
     private void RestoreOrDefaultFrame()
     {
-        if (_appSettingsVm.PinnedFrame is { } f)
+        // Clamped against the CURRENT virtual-screen bounds (not whatever monitor config existed
+        // when the frame was saved) — a display unplugged or a resolution change between app
+        // sessions can otherwise strand the restored frame entirely off every connected monitor
+        // (review finding — task-6-report.md fix wave). WindowFrameClamp.Clamp returns null when
+        // the persisted frame is unrecoverable (essentially none of it would be on-screen), in
+        // which case this falls through to the same default-frame path used when nothing was
+        // persisted at all.
+        var screen = new WindowFrame(
+            SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+
+        if (_appSettingsVm.PinnedFrame is { } f && WindowFrameClamp.Clamp(f, screen) is { } clamped)
         {
-            Left = f.X;
-            Top = f.Y;
-            Width = f.Width;
-            Height = f.Height;
+            Left = clamped.X;
+            Top = clamped.Y;
+            Width = clamped.Width;
+            Height = clamped.Height;
         }
         else if (!_everShown)
         {

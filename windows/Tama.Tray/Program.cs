@@ -12,10 +12,14 @@ namespace Tama.Tray;
 /// Wiring mirrors the Swift app: one shared AgentMonitor instance for the process lifetime,
 /// constructed from the real (non-demo) readers, started at the 30s background interval, bumped
 /// to the 7s interactive interval while the popover OR the pinned window is open and dropped back
-/// to 30s once neither is (spec §6's poll-interval table / beginInteractiveRefresh-
-/// endInteractiveRefresh pair). Since only one of {popover, pinned} is ever visible at a time in
-/// this app (see PinnedWindow's own doc comment), a plain per-surface Start() call at each
-/// show/close stands in for the Swift side's interactiveConsumers reference count.
+/// to 30s only once NEITHER is (spec §6's poll-interval table / beginInteractiveRefresh-
+/// endInteractiveRefresh pair). This is reference-counted via <see cref="InteractivePolling"/>
+/// (Begin() on popover-open and on pinned-window-shown, End() on popover-Closed and on
+/// pinned-window-hidden) rather than a plain per-surface Start() call — a naive "just call
+/// Start() on this surface's own open/close" approach regresses to 30s the instant ONE surface
+/// closes even while the other is still open (e.g. pin, then open the popover, then let the
+/// popover auto-close on focus loss: the pinned window is still visible but polling would wrongly
+/// drop to 30s without the reference count — review finding, task-6-report.md fix wave).
 /// </summary>
 public static class Program
 {
@@ -67,6 +71,13 @@ public static class Program
             runsInBackground: true,
             syncContext: syncContext);
 
+        // Reference-counted poll cadence (see this class's own doc comment) — Begin() from the
+        // popover's open and the pinned window's shown transition, End() from the popover's
+        // Closed and the pinned window's hidden transition; only drops to the background interval
+        // once BOTH have called End().
+        var interactivePolling = new InteractivePolling(
+            monitor.Start, TimeSpan.FromSeconds(InteractiveIntervalSeconds), TimeSpan.FromSeconds(BackgroundIntervalSeconds));
+
         // Constructed once alongside AgentMonitor, NOT per popover open/close — DashboardViewModel's
         // own doc comment requires this: it owns collapse/expand sets, active-only filter, and
         // metric-cycle selections that must persist across the transient popover being closed and
@@ -110,11 +121,11 @@ public static class Program
             popover.Closed += (_, _) =>
             {
                 popover = null;
-                monitor.Start(TimeSpan.FromSeconds(BackgroundIntervalSeconds));
+                interactivePolling.End();
             };
             popover.Show();
             popover.Activate();
-            monitor.Start(TimeSpan.FromSeconds(InteractiveIntervalSeconds));
+            interactivePolling.Begin();
         }
 
         // Reused across pin/unpin (isReleasedWhenClosed = false, spec §1b) — same pattern as
@@ -125,13 +136,15 @@ public static class Program
         var pinnedWindow = new PinnedWindow(dashboardVm, appSettingsVm, ShowAbout, app.Shutdown);
 
         // Poll interval while the pinned window is open (spec §6: a visible dashboard runs the
-        // interactive 7s cadence, reverting to 30s once neither surface is open). Since only one
-        // of {popover, pinned} is ever visible at a time in this app (opening one focuses it,
-        // which closes the transient popover via Deactivated), a plain IsVisible check is enough —
-        // no need for the Swift side's interactiveConsumers reference count.
+        // interactive 7s cadence). Begin()/End() (not a plain per-surface Start() call) so this
+        // correctly composes with the popover's own Begin()/End() above — the shared
+        // interactivePolling only reverts to the background interval once NEITHER surface holds
+        // it open (fix for the finding described in this class's doc comment).
         pinnedWindow.IsVisibleChanged += (_, _) =>
-            monitor.Start(TimeSpan.FromSeconds(
-                pinnedWindow.IsVisible ? InteractiveIntervalSeconds : BackgroundIntervalSeconds));
+        {
+            if (pinnedWindow.IsVisible) interactivePolling.Begin();
+            else interactivePolling.End();
+        };
 
         void TogglePinned() => pinnedWindow.Toggle();
 
