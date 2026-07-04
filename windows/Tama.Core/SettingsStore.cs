@@ -23,11 +23,19 @@ public static class FontSizeExtensions
     };
 }
 
+/// <summary>A top-level window's position + size, persisted so the pinned window "remembers frame"
+/// across pin/unpin cycles and app relaunches (planc-ui-spec.md §1b: mac's PinnedPanel reuses
+/// whatever frame the user last left it at; there is no Windows/WPF equivalent of NSPanel's own
+/// frame autosave, so this plays that role via <see cref="SettingsStore"/>).</summary>
+public readonly record struct WindowFrame(double X, double Y, double Width, double Height);
+
 /// <summary>The user's persisted visual preferences (planc-ui-spec.md §5). Value type mirroring
-/// Swift's SettingsStore's two properties as one unit, so Load()/Save() have a single argument.</summary>
-public readonly record struct AppSettings(Appearance Appearance, FontSize FontSize)
+/// Swift's SettingsStore's two properties as one unit, so Load()/Save() have a single argument.
+/// <see cref="PinnedFrame"/> is null until the pinned window has been shown at least once (spec
+/// §1b: "centered on first presentation only").</summary>
+public readonly record struct AppSettings(Appearance Appearance, FontSize FontSize, WindowFrame? PinnedFrame = null)
 {
-    public static readonly AppSettings Default = new(Appearance.System, FontSize.Small);
+    public static readonly AppSettings Default = new(Appearance.System, FontSize.Small, null);
 }
 
 /// <summary>
@@ -69,11 +77,28 @@ public sealed class SettingsStore
                 ? parsedFontSize
                 : AppSettings.Default.FontSize;
 
-            return new AppSettings(appearance, fontSize);
+            var pinnedFrame = ParseFrame(doc.RootElement);
+
+            return new AppSettings(appearance, fontSize, pinnedFrame);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException
             or ArgumentException or NotSupportedException)
         { return AppSettings.Default; }
+    }
+
+    /// <summary>A malformed/partial "pinnedFrame" object (missing field, wrong type) falls back to
+    /// null rather than a half-populated frame — same never-throw, field-by-field-independent
+    /// fallback contract as appearance/fontSize above.</summary>
+    private static WindowFrame? ParseFrame(JsonElement root)
+    {
+        if (!root.TryGetProperty("pinnedFrame", out var f) || f.ValueKind != JsonValueKind.Object)
+            return null;
+        if (f.TryGetProperty("x", out var x) && x.ValueKind == JsonValueKind.Number
+            && f.TryGetProperty("y", out var y) && y.ValueKind == JsonValueKind.Number
+            && f.TryGetProperty("width", out var w) && w.ValueKind == JsonValueKind.Number
+            && f.TryGetProperty("height", out var h) && h.ValueKind == JsonValueKind.Number)
+            return new WindowFrame(x.GetDouble(), y.GetDouble(), w.GetDouble(), h.GetDouble());
+        return null;
     }
 
     public void Save(AppSettings settings)
@@ -85,6 +110,9 @@ public sealed class SettingsStore
             {
                 appearance = settings.Appearance.ToString().ToLowerInvariant(),
                 fontSize = settings.FontSize.ToString().ToLowerInvariant(),
+                pinnedFrame = settings.PinnedFrame is { } pf
+                    ? new { x = pf.X, y = pf.Y, width = pf.Width, height = pf.Height }
+                    : null,
             });
             var tmp = _filePath + ".tmp";
             File.WriteAllText(tmp, json);

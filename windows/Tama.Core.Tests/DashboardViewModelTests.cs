@@ -31,6 +31,14 @@ public sealed class DashboardViewModelTests
         public OllamaStatus? Read() => Status;
     }
 
+    private sealed class FakeRunAtLogin : IRunAtLogin
+    {
+        public bool Enabled;
+        public int SetCalls;
+        public bool IsEnabled() => Enabled;
+        public void SetEnabled(bool enabled) { Enabled = enabled; SetCalls++; }
+    }
+
     private string _stateDir = null!;
 
     [TestInitialize]
@@ -323,5 +331,49 @@ public sealed class DashboardViewModelTests
 
         Assert.AreEqual("CC", DashboardViewModel.CcLabel);
         Assert.AreEqual("CX", DashboardViewModel.CxLabel);
+    }
+
+    // --- Launch at login (spec §2g/§7 note 3: OS-authoritative via IRunAtLogin) ---
+
+    [TestMethod]
+    public void Launch_at_login_reads_live_through_the_injected_interface()
+    {
+        var monitor = Monitor(new StubScanner());
+        var fake = new FakeRunAtLogin { Enabled = true };
+        var vm = new DashboardViewModel(monitor, fake);
+
+        Assert.IsTrue(vm.LaunchAtLoginEnabled);
+        fake.Enabled = false;
+        Assert.IsFalse(vm.LaunchAtLoginEnabled); // live, not cached at construction
+    }
+
+    [TestMethod]
+    public void Launch_at_login_defaults_to_false_when_no_interface_supplied()
+    {
+        var monitor = Monitor(new StubScanner());
+        var vm = new DashboardViewModel(monitor);
+        Assert.IsFalse(vm.LaunchAtLoginEnabled);
+        vm.ToggleLaunchAtLogin(); // must not throw with no IRunAtLogin
+        Assert.IsFalse(vm.LaunchAtLoginEnabled);
+    }
+
+    [TestMethod]
+    public void Toggling_launch_at_login_flips_it_through_the_interface_and_raises_property_changed()
+    {
+        var monitor = Monitor(new StubScanner());
+        var fake = new FakeRunAtLogin { Enabled = false };
+        var vm = new DashboardViewModel(monitor, fake);
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.ToggleLaunchAtLogin();
+
+        Assert.AreEqual(1, fake.SetCalls);
+        Assert.IsTrue(vm.LaunchAtLoginEnabled);
+        CollectionAssert.Contains(raised, nameof(DashboardViewModel.LaunchAtLoginEnabled));
+
+        vm.ToggleLaunchAtLogin();
+        Assert.AreEqual(2, fake.SetCalls);
+        Assert.IsFalse(vm.LaunchAtLoginEnabled);
     }
 }

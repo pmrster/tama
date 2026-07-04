@@ -120,6 +120,56 @@ public sealed class SettingsStoreTests
         finally { Directory.Delete(outside, recursive: true); }
     }
 
+    // --- pinned-window frame (planc-ui-spec.md §1b: "remembers frame") ---
+
+    [TestMethod]
+    public void Round_trips_a_pinned_frame()
+    {
+        var store = new SettingsStore(_dir);
+        var settings = new AppSettings(Appearance.System, FontSize.Small, new WindowFrame(10, 20, 360, 480));
+        store.Save(settings);
+        Assert.AreEqual(settings, store.Load());
+    }
+
+    [TestMethod]
+    public void Missing_pinned_frame_loads_as_null()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings(Appearance.Dark, FontSize.Medium));
+        Assert.IsNull(store.Load().PinnedFrame);
+    }
+
+    [TestMethod]
+    public void Saving_a_frame_does_not_clobber_appearance_or_font_size()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings(Appearance.Dark, FontSize.Large, new WindowFrame(1, 2, 3, 4)));
+        var loaded = store.Load();
+        Assert.AreEqual(Appearance.Dark, loaded.Appearance);
+        Assert.AreEqual(FontSize.Large, loaded.FontSize);
+        Assert.AreEqual(new WindowFrame(1, 2, 3, 4), loaded.PinnedFrame);
+    }
+
+    [TestMethod]
+    public void Partial_pinned_frame_object_falls_back_to_null_not_a_half_populated_frame()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"),
+            """{"appearance":"system","fontSize":"small","pinnedFrame":{"x":1,"y":2}}""");
+        var loaded = new SettingsStore(_dir).Load();
+        Assert.AreEqual(Appearance.System, loaded.Appearance);
+        Assert.IsNull(loaded.PinnedFrame);
+    }
+
+    [TestMethod]
+    public void Non_object_pinned_frame_falls_back_to_null()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"),
+            """{"appearance":"system","fontSize":"small","pinnedFrame":"nope"}""");
+        Assert.IsNull(new SettingsStore(_dir).Load().PinnedFrame);
+    }
+
     // --- font-size factors (planc-ui-spec.md §5, SettingsStore.swift:13-19 verbatim) ---
 
     [TestMethod]

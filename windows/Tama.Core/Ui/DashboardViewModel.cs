@@ -139,6 +139,7 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
         "counts interrupted/in-flight turns not yet saved to the logs Tama reads.";
 
     private readonly AgentMonitor _monitor;
+    private readonly IRunAtLogin? _runAtLogin;
     private readonly HashSet<Provider> _collapsedProviders = new();
     private readonly HashSet<string> _expandedFolders = new();
     private readonly HashSet<string> _expandedGroups = new();
@@ -149,11 +150,30 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public DashboardViewModel(AgentMonitor monitor)
+    /// <summary><paramref name="runAtLogin"/> is optional (null in most tests that don't care
+    /// about the footer's launch-at-login checkbox) — mirrors every other optional collaborator
+    /// pattern in this codebase (e.g. AppSettingsViewModel's systemIsDark/onAppearanceChanged).</summary>
+    public DashboardViewModel(AgentMonitor monitor, IRunAtLogin? runAtLogin = null)
     {
         _monitor = monitor;
+        _runAtLogin = runAtLogin;
         _monitor.StateChanged += _ => Recompute();
         Recompute();
+    }
+
+    /// <summary>Footer "Launch at login" checkbox (spec §2g/§7 note 3): OS-authoritative, queried
+    /// live through the injected <see cref="IRunAtLogin"/> rather than a persisted flag (mirrors
+    /// mac's <c>SMAppService.mainApp.status</c>). False when no <see cref="IRunAtLogin"/> was
+    /// supplied.</summary>
+    public bool LaunchAtLoginEnabled => _runAtLogin?.IsEnabled() ?? false;
+
+    /// <summary>Toggles launch-at-login through the injected interface; a no-op if none was
+    /// supplied. Raises PropertyChanged so the view refreshes its checkbox glyph immediately.</summary>
+    public void ToggleLaunchAtLogin()
+    {
+        if (_runAtLogin is null) return;
+        _runAtLogin.SetEnabled(!LaunchAtLoginEnabled);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LaunchAtLoginEnabled)));
     }
 
     // ---- user-facing toggles (mirror UIState.shared) ----

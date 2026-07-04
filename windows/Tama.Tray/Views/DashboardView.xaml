@@ -299,9 +299,29 @@
         </DataTemplate>
     </UserControl.Resources>
 
-    <StackPanel>
+    <!-- Root is a Grid (not a StackPanel) so the tree row can be given Height="*" (row index 3
+         below): under the popover's SizeToContent="Height", WPF measures Star rows as Auto (no
+         behavior change there — see DashboardView.xaml.cs's SetFixedWidth doc comment), but under
+         the pinned window's real fixed-size viewport a Star row genuinely grows to fill leftover
+         vertical space once the ScrollViewer's own Height binding is cleared — the WPF analog of
+         mac's `tree`'s `.frame(maxHeight: .infinity)` in pinned mode (spec §2). Every child below
+         keeps its exact original content; only Grid.Row indices were added. -->
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
         <!-- ==== header (§2a) ==== -->
-        <Grid Margin="14,11">
+        <Grid Grid.Row="0" Margin="14,11">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -341,9 +361,12 @@
                                Foreground="{x:Static views:Palette.Dim}"
                                Text="{Binding AnyFolderExpanded, Converter={x:Static views:Converters.ExpandGlyph}}" />
                 </Button>
-                <!-- pin: visible so the header shape matches §2a, enabled by Task 6's pinned window. -->
-                <Button Style="{StaticResource IconButton}" Margin="2,0,0,0" IsEnabled="False"
-                        ToolTip="{x:Static ui:DashboardViewModel.PinTooltip}">
+                <!-- pin: toggles the resizable pinned window (spec §1a/§1b); showing it steals
+                     focus from a currently-open transient popover, which then self-closes via its
+                     own Deactivated handler (PopoverWindow.xaml.cs) — no explicit coordination
+                     needed, mirroring mac's PinnedPanel.toggle() call site. -->
+                <Button Style="{StaticResource IconButton}" Margin="2,0,0,0"
+                        Click="Pin_Click" ToolTip="{x:Static ui:DashboardViewModel.PinTooltip}">
                     <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11"
                                Foreground="{x:Static views:Palette.Dim}" Text="&#xE718;" />
                 </Button>
@@ -356,14 +379,16 @@
         </Grid>
 
         <!-- ==== pixel-cat strip (§2 layout tree: PetView, height 34, h-padding 14, top 2 bottom 6) ==== -->
-        <views:PetControl x:Name="Pet" Margin="14,2,14,6" />
+        <views:PetControl Grid.Row="1" x:Name="Pet" Margin="14,2,14,6" />
 
-        <Border Height="1" Background="{x:Static views:Palette.PanelEdge}" />
+        <Border Grid.Row="2" Height="1" Background="{x:Static views:Palette.PanelEdge}" />
 
         <!-- ==== tree (§2b/§2c/§3): explicit listHeight+22 so the size-to-content popover never
-             collapses the scroll area (§2 formula; spec §7 note 5). ==== -->
-        <ScrollViewer Height="{Binding PopoverListHeight}" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
+             collapses the scroll area (§2 formula; spec §7 note 5). In pinned mode (fixedWidth:
+             false) DashboardView.xaml.cs clears this Height local value so the ScrollViewer instead
+             fills the Grid's Star-sized row 3 (spec §2: pinned tree gets maxHeight: .infinity). ==== -->
+        <ScrollViewer Grid.Row="3" x:Name="TreeScroll" Height="{Binding PopoverListHeight}"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="12,2,12,11">
                 <TextBlock FontSize="11" Foreground="{x:Static views:Palette.Dim}" Margin="0,8"
                            HorizontalAlignment="Center" Text="{Binding EmptyStateText}"
@@ -372,11 +397,11 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Border Height="1" Background="{x:Static views:Palette.PanelEdge}" />
+        <Border Grid.Row="4" Height="1" Background="{x:Static views:Palette.PanelEdge}" />
 
         <!-- ==== ollama strip (§4): entirely absent - including its own trailing divider - unless
              a local server process is detected. ==== -->
-        <StackPanel Visibility="{Binding OllamaVisible, Converter={StaticResource BoolToVis}}">
+        <StackPanel Grid.Row="5" Visibility="{Binding OllamaVisible, Converter={StaticResource BoolToVis}}">
             <StackPanel Margin="12,7">
                 <Grid Background="Transparent" Cursor="Hand" MouseLeftButtonDown="OllamaHeader_Click">
                     <Grid.ColumnDefinitions>
@@ -407,7 +432,7 @@
         </StackPanel>
 
         <!-- ==== TODAY / LAST 24H bar (§2f): window toggle + (?) info + hardcoded CC / CX chips. ==== -->
-        <Grid Margin="14,8" Background="Transparent" ToolTip="{Binding TodayTooltip}">
+        <Grid Grid.Row="6" Margin="14,8" Background="Transparent" ToolTip="{Binding TodayTooltip}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -443,23 +468,24 @@
         </Grid>
 
         <!-- ==== legend (§2e): inlines built in code-behind from DashboardViewModel.LegendPieces. ==== -->
-        <TextBlock x:Name="LegendText" Margin="14,2,14,6" FontFamily="Consolas" FontSize="8.5"
+        <TextBlock Grid.Row="7" x:Name="LegendText" Margin="14,2,14,6" FontFamily="Consolas" FontSize="8.5"
                    TextWrapping="Wrap" />
 
-        <Border Height="1" Background="{x:Static views:Palette.PanelEdge}" />
+        <Border Grid.Row="8" Height="1" Background="{x:Static views:Palette.PanelEdge}" />
 
         <!-- ==== footer (§2g): launch-at-login checkbox + About / Quit chips. ==== -->
-        <Grid Margin="14,8">
+        <Grid Grid.Row="9" Margin="14,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <!-- launch-at-login: visible so the footer shape matches §2g, but inert — Task 6 owns
-                 the real read/write behind an IRunAtLogin interface (see task-6-brief.md); wiring
-                 a direct HKCU Run-key write here would be out of this task's scope. -->
-            <StackPanel Orientation="Horizontal" IsEnabled="False"
+            <!-- launch-at-login: reads/writes through DashboardViewModel.LaunchAtLoginEnabled /
+                 ToggleLaunchAtLogin(), backed by the injected IRunAtLogin (Tama.Tray.RunAtLogin's
+                 HKCU Run-key write on Windows; task-6-brief.md). -->
+            <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
+                        MouseLeftButtonDown="LaunchAtLogin_Click"
                         ToolTip="{x:Static ui:DashboardViewModel.LaunchAtLoginTooltip}">
                 <TextBlock x:Name="LaunchAtLoginIcon" FontSize="11" VerticalAlignment="Center" />
                 <TextBlock Margin="6,0,0,0" FontSize="11" VerticalAlignment="Center"
@@ -484,5 +510,5 @@
                 </StackPanel>
             </Border>
         </Grid>
-    </StackPanel>
+    </Grid>
 </UserControl>

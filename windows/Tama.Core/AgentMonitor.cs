@@ -23,7 +23,22 @@ public sealed class AgentMonitor : IDisposable
     private CatState _catState;
     private TokenWindow _window = TokenWindow.Today;
 
+    /// <summary>The latest published snapshot. Single-threaded-context contract: this property is
+    /// only ever WRITTEN from inside <see cref="Apply"/>, which itself only ever runs (a) directly
+    /// on the caller's thread when <c>runsInBackground: false</c> (the test seam — no marshalling
+    /// at all), or (b) marshalled onto whatever thread the injected <c>syncContext</c> represents
+    /// (in the shipped app, the WPF UI/Dispatcher thread — see <see cref="Publish"/>). Callers on
+    /// that same context can therefore read <see cref="State"/> synchronously after
+    /// <see cref="StateChanged"/> fires without any lock; reading it from a DIFFERENT thread than
+    /// the one <see cref="Refresh"/> was (or will be) marshalled onto is a data race — this class
+    /// does no cross-thread synchronization of its own beyond the <c>_inFlight</c> re-entrancy
+    /// guard.</summary>
     public AppState State { get; private set; } = AppState.Empty;
+
+    /// <summary>Fires once per completed scan, always on the same single-threaded context as
+    /// <see cref="State"/> above (see that property's doc comment for the exact contract) — i.e.
+    /// in the shipped WPF app, always on the UI thread, so subscribers may touch UI elements
+    /// directly from their handler without their own dispatcher hop.</summary>
     public event Action<AppState>? StateChanged;
 
     /// <summary>"Active" = a session whose log was written within this of the last scan.</summary>
@@ -58,7 +73,12 @@ public sealed class AgentMonitor : IDisposable
 
     /// <summary>Scans and publishes the new state. Background mode skips overlapping calls;
     /// runsInBackground: false (tests) scans synchronously on the caller's thread. With a real
-    /// SynchronizationContext, the inFlight flag clears after the marshalled apply completes.</summary>
+    /// SynchronizationContext, the inFlight flag clears only once the marshalled <see cref="Apply"/>
+    /// call actually runs on that context — NOT when the background scan work merely finishes —
+    /// so a second <see cref="Refresh"/> called before the UI thread has pumped the posted apply
+    /// is correctly treated as still-in-flight and skipped (see
+    /// AgentMonitorPumpingContextTests for a test that proves this ordering with a queueing
+    /// SynchronizationContext).</summary>
     public void Refresh()
     {
         var now = _now();
@@ -81,10 +101,16 @@ public sealed class AgentMonitor : IDisposable
                     finally { Interlocked.Exchange(ref _inFlight, 0); }
                 });
             }
-            catch
+            catch (Exception e)
             {
+                // Readers/scanners are documented no-throw (SafeFileReader etc. swallow their own
+                // I/O errors), so reaching here means something unexpected slipped through. Swallow
+                // rather than let an unobserved Task exception silently vanish or (in older TPL
+                // configurations) tear down the process — a tray widget must not die to one bad
+                // scan. Trace.WriteLine (not Debug.WriteLine) so this is visible in Release builds
+                // too, not compiled out.
                 Interlocked.Exchange(ref _inFlight, 0);
-                throw;
+                System.Diagnostics.Trace.WriteLine($"AgentMonitor.Refresh: background scan failed: {e}");
             }
         });
     }

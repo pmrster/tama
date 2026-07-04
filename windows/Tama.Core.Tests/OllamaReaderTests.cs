@@ -132,4 +132,22 @@ public sealed class OllamaReaderTests
         Assert.AreEqual("m:1", m.Model);
         Assert.AreEqual(1, m.RequestCount);
     }
+
+    /// <summary>Strengthened CRLF case (task-6 carry-forward): here `model=` is the FINAL field on
+    /// the line (no trailing `port=...` after it), so on a CRLF log the '\r' sits immediately after
+    /// the tag with nothing else in between — the case most likely to leak a stray '\r' into the
+    /// parsed model tag if StartedModel's terminator scan (line.IndexOfAny(' ', '\t', '\r')) were
+    /// ever narrowed to just whitespace.</summary>
+    [TestMethod]
+    public void CRLF_log_with_model_as_the_final_field_still_splits_tag_correctly()
+    {
+        var startNoTrailingFields =
+            "time=2026-06-22T18:36:56.556+07:00 level=INFO source=client.go:367 " +
+            "msg=\"starting mlx runner subprocess\" model=m:1";
+        var p = Path.Combine(_root, "server.log");
+        File.WriteAllText(p, string.Join("\r\n", startNoTrailingFields, Gin("19:00:00", "1s", "/api/chat")));
+        var m = Reader(p).Read()!.Models[0];
+        Assert.AreEqual("m:1", m.Model);   // not "m:1\r"
+        Assert.AreEqual(1, m.RequestCount);
+    }
 }

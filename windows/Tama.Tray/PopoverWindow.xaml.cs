@@ -15,7 +15,7 @@ public partial class PopoverWindow : Window
 {
     private bool _closing;
 
-    public PopoverWindow(DashboardViewModel vm, Action onAbout, Action onQuit)
+    public PopoverWindow(DashboardViewModel vm, Action onAbout, Action onQuit, Action onPin, double fontScale = 1.0)
     {
         InitializeComponent();
 
@@ -23,8 +23,9 @@ public partial class PopoverWindow : Window
         // set to the correct color by AppSettingsViewModel (once at startup, again live on every
         // Settings change, spec §5) — re-deriving from the OS here would silently discard an
         // explicit Light/Dark override every time the popover reopens (see Palette.cs's own
-        // doc comment on Apply/IsSystemDark).
-        Dashboard.Initialize(vm, onAbout, onQuit);
+        // doc comment on Apply/IsSystemDark). fontScale is re-read fresh here since the popover is
+        // rebuilt on every open (spec §5/Task 5 carry: "next open" picks up the latest setting).
+        Dashboard.Initialize(vm, onAbout, onQuit, onPin, fontScale: fontScale);
 
         Deactivated += (_, _) => { if (!_closing) Close(); };
         Loaded += (_, _) => PositionNearTray();
@@ -34,6 +35,15 @@ public partial class PopoverWindow : Window
     {
         _closing = true;
         base.OnClosing(e);
+    }
+
+    /// <summary>Releases the DashboardView's VM subscription (lifecycle-leak fix, task-6 carry) —
+    /// safe to call unconditionally since the popover is fully discarded and rebuilt fresh on every
+    /// open (Program.cs's TogglePopover), unlike the reused PinnedWindow.</summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        Dashboard.Teardown();
+        base.OnClosed(e);
     }
 
     public void CloseSafely()

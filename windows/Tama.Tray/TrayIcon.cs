@@ -14,24 +14,25 @@ namespace Tama.Tray;
 /// needed to get right-click working independently of left-click.
 ///
 /// Menu order mirrors task-2-brief.md: Open, Pin window, Settings, About, (separator), Quit.
-/// Pin window is wired up in Task 6 — kept visible but disabled here so the menu shape is
-/// already correct. Settings is wired here (Task 5).
+/// Pin window toggles the resizable PinnedWindow (spec §1a/§1b, task-6-brief.md). Settings is
+/// wired here (Task 5).
 /// </summary>
 public sealed class TrayIcon : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private bool _asleep;
 
-    public TrayIcon(Action onToggle, Action onSettings, Action onAbout, Action onQuit)
+    public TrayIcon(Action onToggle, Action onPinToggle, Action onSettings, Action onAbout, Action onQuit)
     {
         ArgumentNullException.ThrowIfNull(onToggle);
+        ArgumentNullException.ThrowIfNull(onPinToggle);
         ArgumentNullException.ThrowIfNull(onSettings);
         ArgumentNullException.ThrowIfNull(onAbout);
         ArgumentNullException.ThrowIfNull(onQuit);
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open", null, (_, _) => onToggle());
-        menu.Items.Add("Pin window").Enabled = false;   // stub — real window ships in Task 6
+        menu.Items.Add("Pin window", null, (_, _) => onPinToggle());
         menu.Items.Add("Settings", null, (_, _) => onSettings());
         menu.Items.Add("About", null, (_, _) => onAbout());
         menu.Items.Add(new ToolStripSeparator());

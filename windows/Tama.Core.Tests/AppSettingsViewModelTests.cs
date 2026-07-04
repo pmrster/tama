@@ -133,6 +133,46 @@ public sealed class AppSettingsViewModelTests
         CollectionAssert.Contains(names, nameof(AppSettingsViewModel.FontScale));
     }
 
+    // --- pinned-window frame (planc-ui-spec.md §1b) ---
+
+    [TestMethod]
+    public void Pinned_frame_starts_null_and_persists_once_set()
+    {
+        var store = Store();
+        var vm = new AppSettingsViewModel(store);
+        Assert.IsNull(vm.PinnedFrame);
+
+        vm.PinnedFrame = new WindowFrame(10, 20, 360, 480);
+        Assert.AreEqual(new WindowFrame(10, 20, 360, 480), new AppSettingsViewModel(store).PinnedFrame);
+    }
+
+    [TestMethod]
+    public void Setting_pinned_frame_does_not_disturb_appearance_or_font_size()
+    {
+        var store = Store();
+        var vm = new AppSettingsViewModel(store);
+        vm.Appearance = Appearance.Dark;
+        vm.FontSize = FontSize.Large;
+
+        vm.PinnedFrame = new WindowFrame(1, 2, 3, 4);
+
+        var reloaded = new AppSettingsViewModel(store);
+        Assert.AreEqual(Appearance.Dark, reloaded.Appearance);
+        Assert.AreEqual(FontSize.Large, reloaded.FontSize);
+        Assert.AreEqual(new WindowFrame(1, 2, 3, 4), reloaded.PinnedFrame);
+    }
+
+    [TestMethod]
+    public void Setting_the_same_frame_again_does_not_reraise_property_changed()
+    {
+        var vm = new AppSettingsViewModel(Store());
+        vm.PinnedFrame = new WindowFrame(1, 2, 3, 4);
+        var raised = 0;
+        vm.PropertyChanged += (_, _) => raised++;
+        vm.PinnedFrame = new WindowFrame(1, 2, 3, 4);
+        Assert.AreEqual(0, raised);
+    }
+
     [TestMethod]
     public void ReapplyIfSystem_reprobes_in_system_mode_and_is_noop_in_explicit_mode()
     {

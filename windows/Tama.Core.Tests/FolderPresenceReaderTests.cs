@@ -34,6 +34,25 @@ public sealed class FolderPresenceReaderTests
         Assert.AreEqual(new DateTimeOffset(stamp), sessions[0].LastActivity);
     }
 
+    /// <summary>Task-6 carry-forward: when `logs.json` is absent, LastActivity falls back to the
+    /// hash directory's own mtime rather than being skipped or defaulting to "now" (GeminiReader.MTime
+    /// tries the file first, then the directory).</summary>
+    [TestMethod]
+    public void Gemini_falls_back_to_directory_mtime_when_logs_json_is_absent()
+    {
+        var hash = Path.Combine(_root, "hash-no-logs-json");
+        Directory.CreateDirectory(hash);
+        File.WriteAllText(Path.Combine(hash, ".project_root"), "/Example/Code/other\n");
+        var stamp = new DateTime(2026, 6, 20, 8, 30, 0, DateTimeKind.Utc);
+        Directory.SetLastWriteTimeUtc(hash, stamp);
+
+        var sessions = GeminiReader.Read(_root);
+        Assert.AreEqual(1, sessions.Count);
+        Assert.AreEqual("/Example/Code/other", sessions[0].Folder);
+        Assert.AreEqual(new DateTimeOffset(stamp), sessions[0].LastActivity);
+        Assert.IsFalse(File.Exists(Path.Combine(hash, "logs.json")));
+    }
+
     [TestMethod]
     public void Gemini_skips_dirs_with_empty_or_missing_project_root()
     {

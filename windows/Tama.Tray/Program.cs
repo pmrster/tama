@@ -11,10 +11,11 @@ namespace Tama.Tray;
 ///
 /// Wiring mirrors the Swift app: one shared AgentMonitor instance for the process lifetime,
 /// constructed from the real (non-demo) readers, started at the 30s background interval, bumped
-/// to the 7s interactive interval while the popover is open and dropped back to 30s when it
-/// closes (spec §6's poll-interval table / beginInteractiveRefresh-endInteractiveRefresh pair —
-/// this app only ever has the popover as an interactive consumer until Task 6 adds the pinned
-/// window, so a plain Start() call stands in for the Swift side's consumer-counting).
+/// to the 7s interactive interval while the popover OR the pinned window is open and dropped back
+/// to 30s once neither is (spec §6's poll-interval table / beginInteractiveRefresh-
+/// endInteractiveRefresh pair). Since only one of {popover, pinned} is ever visible at a time in
+/// this app (see PinnedWindow's own doc comment), a plain per-surface Start() call at each
+/// show/close stands in for the Swift side's interactiveConsumers reference count.
 /// </summary>
 public static class Program
 {
@@ -30,6 +31,7 @@ public static class Program
         AgentMonitor? monitor = null;
         TrayIcon? trayIcon = null;
         SettingsWindow? settingsWindow = null;
+        PinnedWindow? pinnedWindow = null;
 
         // Captured only once WPF's Run() has installed a DispatcherSynchronizationContext on
         // this (UI) thread (System.Windows.Application.Run sets it before raising Startup), so
@@ -38,19 +40,20 @@ public static class Program
         app.Startup += (_, _) =>
         {
             var syncContext = SynchronizationContext.Current;
-            (monitor, trayIcon, settingsWindow) = Bootstrap(app, syncContext);
+            (monitor, trayIcon, settingsWindow, pinnedWindow) = Bootstrap(app, syncContext);
         };
         app.Exit += (_, _) =>
         {
             monitor?.Dispose();
             trayIcon?.Dispose();
             settingsWindow?.CloseForReal();
+            pinnedWindow?.CloseForReal();
         };
 
         app.Run();
     }
 
-    private static (AgentMonitor Monitor, TrayIcon TrayIcon, SettingsWindow SettingsWindow) Bootstrap(
+    private static (AgentMonitor Monitor, TrayIcon TrayIcon, SettingsWindow SettingsWindow, PinnedWindow PinnedWindow) Bootstrap(
         System.Windows.Application app, SynchronizationContext? syncContext)
     {
         var monitor = new AgentMonitor(
@@ -68,13 +71,16 @@ public static class Program
         // own doc comment requires this: it owns collapse/expand sets, active-only filter, and
         // metric-cycle selections that must persist across the transient popover being closed and
         // reopened (mirrors the Swift port's process-lifetime UIState.shared, spec §7 note 7).
-        var dashboardVm = new DashboardViewModel(monitor);
+        // runAtLogin backs the footer's "Launch at login" checkbox (task-6-brief.md's IRunAtLogin).
+        var runAtLogin = new RunAtLogin();
+        var dashboardVm = new DashboardViewModel(monitor, runAtLogin);
 
         // Appearance/font-size settings (spec §5) — persisted to %APPDATA%\Tama\settings.json.
         // AppSettingsViewModel is now the single source of truth for Palette.Apply: applied once
         // here before any window is shown (mirrors AppDelegate.applicationDidFinishLaunching's
         // explicit AppSettings.shared.applyAppearance() call, spec §6 step 1), then again live on
-        // every Settings change via the injected callback below.
+        // every Settings change via the injected callback below. It also owns PinnedFrame (spec
+        // §1b "remembers frame"), persisted through the same store.
         var appSettingsVm = new AppSettingsViewModel(
             SettingsStore.AppData(), systemIsDark: Palette.IsSystemDark, onAppearanceChanged: Palette.Apply);
         appSettingsVm.ApplyInitialAppearance();
@@ -100,7 +106,7 @@ public static class Program
             }
             // Reapply resolved appearance on popover open (macOS/Windows spec §1a).
             appSettingsVm.ReapplyIfSystem();
-            popover = new PopoverWindow(dashboardVm, ShowAbout, app.Shutdown);
+            popover = new PopoverWindow(dashboardVm, ShowAbout, app.Shutdown, TogglePinned, appSettingsVm.FontScale);
             popover.Closed += (_, _) =>
             {
                 popover = null;
@@ -111,8 +117,27 @@ public static class Program
             monitor.Start(TimeSpan.FromSeconds(InteractiveIntervalSeconds));
         }
 
+        // Reused across pin/unpin (isReleasedWhenClosed = false, spec §1b) — same pattern as
+        // settingsWindow above. Its own Toggle() handles show/hide + frame restore/persist; its
+        // OWN pin button is wired directly to that Toggle() inside its constructor (no circular
+        // "onPin" callback needed here, unlike the popover below which genuinely needs an external
+        // reference to this instance).
+        var pinnedWindow = new PinnedWindow(dashboardVm, appSettingsVm, ShowAbout, app.Shutdown);
+
+        // Poll interval while the pinned window is open (spec §6: a visible dashboard runs the
+        // interactive 7s cadence, reverting to 30s once neither surface is open). Since only one
+        // of {popover, pinned} is ever visible at a time in this app (opening one focuses it,
+        // which closes the transient popover via Deactivated), a plain IsVisible check is enough —
+        // no need for the Swift side's interactiveConsumers reference count.
+        pinnedWindow.IsVisibleChanged += (_, _) =>
+            monitor.Start(TimeSpan.FromSeconds(
+                pinnedWindow.IsVisible ? InteractiveIntervalSeconds : BackgroundIntervalSeconds));
+
+        void TogglePinned() => pinnedWindow.Toggle();
+
         var trayIcon = new TrayIcon(
             onToggle: TogglePopover,
+            onPinToggle: TogglePinned,
             onSettings: ShowSettings,
             onAbout: ShowAbout,
             onQuit: app.Shutdown);
@@ -120,7 +145,7 @@ public static class Program
         monitor.StateChanged += state => trayIcon.SetMood(state.Mood);
         monitor.Start(TimeSpan.FromSeconds(BackgroundIntervalSeconds));
 
-        return (monitor, trayIcon, settingsWindow);
+        return (monitor, trayIcon, settingsWindow, pinnedWindow);
     }
 
     private static void ShowAbout() =>

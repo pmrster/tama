@@ -23,6 +23,7 @@ public sealed class AppSettingsViewModel : INotifyPropertyChanged
     private readonly Action<bool>? _onAppearanceChanged;
     private Appearance _appearance;
     private FontSize _fontSize;
+    private WindowFrame? _pinnedFrame;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -36,6 +37,7 @@ public sealed class AppSettingsViewModel : INotifyPropertyChanged
         var loaded = _store.Load();
         _appearance = loaded.Appearance;
         _fontSize = loaded.FontSize;
+        _pinnedFrame = loaded.PinnedFrame;
     }
 
     /// <summary>Persists on every change and retints live via the injected callback (spec §5:
@@ -97,7 +99,22 @@ public sealed class AppSettingsViewModel : INotifyPropertyChanged
             _onAppearanceChanged?.Invoke(IsDark);
     }
 
-    private void Persist() => _store.Save(new AppSettings(_appearance, _fontSize));
+    /// <summary>The pinned window's last-known position/size (planc-ui-spec.md §1b: "remembers
+    /// frame"), persisted alongside appearance/fontSize. Null until the pinned window has been
+    /// shown at least once (spec: "centered on first presentation only").</summary>
+    public WindowFrame? PinnedFrame
+    {
+        get => _pinnedFrame;
+        set
+        {
+            if (_pinnedFrame == value) return;
+            _pinnedFrame = value;
+            Persist();
+            Raise();
+        }
+    }
+
+    private void Persist() => _store.Save(new AppSettings(_appearance, _fontSize, _pinnedFrame));
 
     private void Raise([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
