@@ -75,12 +75,23 @@ public partial class PinnedWindow : Window
             Width = clamped.Width;
             Height = clamped.Height;
         }
-        else if (!_everShown)
+        else
         {
-            // Spec §1b: default size 360x480, centered on first presentation only.
+            // Spec §1b default 360x480. Falls back on EVERY unrecoverable restore, not just the
+            // first show — a monitor unplugged between an unpin and a later re-pin in the same
+            // session would otherwise leave the stale off-screen Left/Top in place (re-review
+            // finding). CenterScreen is inert after the first Show(), so center manually then.
             Width = 360;
             Height = 480;
-            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            if (!_everShown)
+            {
+                WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            }
+            else
+            {
+                Left = screen.X + Math.Max(0, (screen.Width - Width) / 2);
+                Top = screen.Y + Math.Max(0, (screen.Height - Height) / 2);
+            }
         }
         _everShown = true;
     }
