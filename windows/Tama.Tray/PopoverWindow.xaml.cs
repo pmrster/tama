@@ -19,9 +19,11 @@ public partial class PopoverWindow : Window
     {
         InitializeComponent();
 
-        // Retint chrome + DashboardView's Palette-bound brushes for the current OS theme before
-        // first paint (spec §2-Palette; Task 5 will call this again on a live theme-change signal).
-        Palette.Apply(Palette.IsSystemDark());
+        // No retint call here on purpose: Palette's brushes are process-wide statics, already
+        // set to the correct color by AppSettingsViewModel (once at startup, again live on every
+        // Settings change, spec §5) — re-deriving from the OS here would silently discard an
+        // explicit Light/Dark override every time the popover reopens (see Palette.cs's own
+        // doc comment on Apply/IsSystemDark).
         Dashboard.Initialize(vm, onAbout, onQuit);
 
         Deactivated += (_, _) => { if (!_closing) Close(); };

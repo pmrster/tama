@@ -1,5 +1,6 @@
 using Tama.Core;
 using Tama.Core.Ui;
+using Tama.Tray.Views;
 
 namespace Tama.Tray;
 
@@ -28,6 +29,7 @@ public static class Program
 
         AgentMonitor? monitor = null;
         TrayIcon? trayIcon = null;
+        SettingsWindow? settingsWindow = null;
 
         // Captured only once WPF's Run() has installed a DispatcherSynchronizationContext on
         // this (UI) thread (System.Windows.Application.Run sets it before raising Startup), so
@@ -36,18 +38,19 @@ public static class Program
         app.Startup += (_, _) =>
         {
             var syncContext = SynchronizationContext.Current;
-            (monitor, trayIcon) = Bootstrap(app, syncContext);
+            (monitor, trayIcon, settingsWindow) = Bootstrap(app, syncContext);
         };
         app.Exit += (_, _) =>
         {
             monitor?.Dispose();
             trayIcon?.Dispose();
+            settingsWindow?.CloseForReal();
         };
 
         app.Run();
     }
 
-    private static (AgentMonitor Monitor, TrayIcon TrayIcon) Bootstrap(
+    private static (AgentMonitor Monitor, TrayIcon TrayIcon, SettingsWindow SettingsWindow) Bootstrap(
         System.Windows.Application app, SynchronizationContext? syncContext)
     {
         var monitor = new AgentMonitor(
@@ -66,6 +69,25 @@ public static class Program
         // metric-cycle selections that must persist across the transient popover being closed and
         // reopened (mirrors the Swift port's process-lifetime UIState.shared, spec §7 note 7).
         var dashboardVm = new DashboardViewModel(monitor);
+
+        // Appearance/font-size settings (spec §5) — persisted to %APPDATA%\Tama\settings.json.
+        // AppSettingsViewModel is now the single source of truth for Palette.Apply: applied once
+        // here before any window is shown (mirrors AppDelegate.applicationDidFinishLaunching's
+        // explicit AppSettings.shared.applyAppearance() call, spec §6 step 1), then again live on
+        // every Settings change via the injected callback below.
+        var appSettingsVm = new AppSettingsViewModel(
+            SettingsStore.AppData(), systemIsDark: Palette.IsSystemDark, onAppearanceChanged: Palette.Apply);
+        appSettingsVm.ApplyInitialAppearance();
+
+        // Reused across opens (isReleasedWhenClosed = false, spec §1c) — Hide()s on close rather
+        // than destroying, so its own Closing handler intercepts the close instead of this method.
+        var settingsWindow = new SettingsWindow(appSettingsVm);
+
+        void ShowSettings()
+        {
+            settingsWindow.Show();
+            settingsWindow.Activate();
+        }
 
         PopoverWindow? popover = null;
 
@@ -89,13 +111,14 @@ public static class Program
 
         var trayIcon = new TrayIcon(
             onToggle: TogglePopover,
+            onSettings: ShowSettings,
             onAbout: ShowAbout,
             onQuit: app.Shutdown);
 
         monitor.StateChanged += state => trayIcon.SetMood(state.Mood);
         monitor.Start(TimeSpan.FromSeconds(BackgroundIntervalSeconds));
 
-        return (monitor, trayIcon);
+        return (monitor, trayIcon, settingsWindow);
     }
 
     private static void ShowAbout() =>

@@ -14,9 +14,13 @@ namespace Tama.Tray.Views;
 /// kept for anything that prefers <c>{DynamicResource …}</c> keys.
 ///
 /// System theme detection is via the registry's per-user <c>AppsUseLightTheme</c> value — no live
-/// theme-change listener yet (acceptable for now per task-4-brief.md; Task 5 adds the explicit
-/// Appearance setting — planc-ui-spec.md §5 — which will call <see cref="Apply"/> on change,
-/// overriding the OS-follow default here).
+/// OS theme-change listener exists, so <see cref="IsSystemDark"/> is a one-shot probe (acceptable
+/// per task-4-brief.md). Task 5's <c>AppSettingsViewModel</c> is now the single source of truth
+/// for when <see cref="Apply"/> runs: once at startup (resolving <c>Appearance.System</c> via
+/// <see cref="IsSystemDark"/> the one time) and again on every Settings change — overriding the
+/// OS-follow default when the user picks Light/Dark explicitly (planc-ui-spec.md §5). Callers
+/// other than <c>AppSettingsViewModel</c> must not call <see cref="Apply"/> themselves, or they
+/// will silently discard the user's explicit choice back to whatever the OS says right now.
 /// </summary>
 public static class Palette
 {
@@ -48,6 +52,9 @@ public static class Palette
 
     /// <summary>Warn at 0.14 opacity — the destructive footer chip's hover pill (§2g).</summary>
     public static readonly SolidColorBrush WarnPill = FrozenWithOpacity(0xE5, 0x48, 0x4D, 0.14);
+
+    /// <summary>Coral at 0.18 opacity — the Settings window's Close button background (§5.6).</summary>
+    public static readonly SolidColorBrush CoralPill = FrozenWithOpacity(0xD9, 0x77, 0x57, 0.18);
 
     static Palette()
     {
