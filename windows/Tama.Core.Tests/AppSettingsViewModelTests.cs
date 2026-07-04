@@ -132,4 +132,29 @@ public sealed class AppSettingsViewModelTests
         CollectionAssert.Contains(names, nameof(AppSettingsViewModel.FontSize));
         CollectionAssert.Contains(names, nameof(AppSettingsViewModel.FontScale));
     }
+
+    [TestMethod]
+    public void ReapplyIfSystem_reprobes_in_system_mode_and_is_noop_in_explicit_mode()
+    {
+        var calls = new List<bool>();
+        var systemDark = true;
+        var vm = new AppSettingsViewModel(Store(), systemIsDark: () => systemDark, onAppearanceChanged: calls.Add);
+        Assert.AreEqual(Appearance.System, vm.Appearance);
+
+        // System mode starts dark
+        vm.ApplyInitialAppearance();
+        CollectionAssert.AreEqual(new[] { true }, calls);
+
+        // OS switches to light; system mode reapply re-probes
+        systemDark = false;
+        vm.ReapplyIfSystem();
+        CollectionAssert.AreEqual(new[] { true, false }, calls);
+
+        // Explicit mode is untouched by ReapplyIfSystem
+        vm.Appearance = Appearance.Light;
+        Assert.AreEqual(3, calls.Count);
+        systemDark = true;  // system changes back
+        vm.ReapplyIfSystem();
+        Assert.AreEqual(3, calls.Count); // no new call in explicit Light mode
+    }
 }

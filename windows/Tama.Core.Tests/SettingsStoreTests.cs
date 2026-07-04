@@ -95,6 +95,17 @@ public sealed class SettingsStoreTests
     }
 
     [TestMethod]
+    public void Undefined_numeric_enum_values_load_as_defaults()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"), """{"appearance":"5","fontSize":"7"}""");
+        var loaded = new SettingsStore(_dir).Load();
+        Assert.AreEqual(AppSettings.Default, loaded);
+        Assert.AreEqual(Appearance.System, loaded.Appearance);
+        Assert.AreEqual(FontSize.Small, loaded.FontSize);
+    }
+
+    [TestMethod]
     public void Save_writes_only_inside_the_injected_directory()
     {
         var outside = Path.Combine(Path.GetTempPath(), "settings-outside-" + Guid.NewGuid());

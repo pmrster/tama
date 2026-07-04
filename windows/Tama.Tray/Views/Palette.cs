@@ -21,6 +21,9 @@ namespace Tama.Tray.Views;
 /// OS-follow default when the user picks Light/Dark explicitly (planc-ui-spec.md §5). Callers
 /// other than <c>AppSettingsViewModel</c> must not call <see cref="Apply"/> themselves, or they
 /// will silently discard the user's explicit choice back to whatever the OS says right now.
+/// Exception: the static ctor seeds a bootstrap default via <see cref="Apply"/>(<see cref="IsSystemDark"/>())
+/// before <c>AppSettingsViewModel</c> takes ownership; <c>ApplyInitialAppearance()</c> always
+/// overwrites it before first paint.
 /// </summary>
 public static class Palette
 {
@@ -69,6 +72,7 @@ public static class Palette
         Resources["Blue"] = Blue;
         Resources["Purple"] = Purple;
         Resources["Warn"] = Warn;
+        // Bootstrap default before AppSettingsViewModel.ApplyInitialAppearance() takes ownership.
         Apply(IsSystemDark());
     }
 

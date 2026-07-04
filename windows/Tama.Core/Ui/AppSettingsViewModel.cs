@@ -87,6 +87,16 @@ public sealed class AppSettingsViewModel : INotifyPropertyChanged
     /// <c>AppSettings.shared.applyAppearance()</c> before anything is shown, spec §6).</summary>
     public void ApplyInitialAppearance() => _onAppearanceChanged?.Invoke(IsDark);
 
+    /// <summary>If <see cref="Appearance"/> is <see cref="Tama.Core.Appearance.System"/>, re-probes
+    /// the OS theme via the injected <c>systemIsDark</c> and reinvokes <c>onAppearanceChanged</c>;
+    /// explicit Light/Dark are untouched. Call on every popover open (macOS/Windows reapply resolved
+    /// appearance per popover show, spec §1a).</summary>
+    public void ReapplyIfSystem()
+    {
+        if (_appearance == Appearance.System)
+            _onAppearanceChanged?.Invoke(IsDark);
+    }
+
     private void Persist() => _store.Save(new AppSettings(_appearance, _fontSize));
 
     private void Raise([CallerMemberName] string? name = null) =>

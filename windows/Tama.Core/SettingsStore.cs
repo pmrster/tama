@@ -58,12 +58,14 @@ public sealed class SettingsStore
             var appearance = doc.RootElement.TryGetProperty("appearance", out var a)
                 && a.ValueKind == JsonValueKind.String
                 && Enum.TryParse<Appearance>(a.GetString(), ignoreCase: true, out var parsedAppearance)
+                && Enum.IsDefined(typeof(Appearance), parsedAppearance)
                 ? parsedAppearance
                 : AppSettings.Default.Appearance;
 
             var fontSize = doc.RootElement.TryGetProperty("fontSize", out var f)
                 && f.ValueKind == JsonValueKind.String
                 && Enum.TryParse<FontSize>(f.GetString(), ignoreCase: true, out var parsedFontSize)
+                && Enum.IsDefined(typeof(FontSize), parsedFontSize)
                 ? parsedFontSize
                 : AppSettings.Default.FontSize;
 

@@ -98,6 +98,8 @@ public static class Program
                 popover.CloseSafely();   // triggers popover.Closed below (Deactivated also routes here)
                 return;
             }
+            // Reapply resolved appearance on popover open (macOS/Windows spec §1a).
+            appSettingsVm.ReapplyIfSystem();
             popover = new PopoverWindow(dashboardVm, ShowAbout, app.Shutdown);
             popover.Closed += (_, _) =>
             {
