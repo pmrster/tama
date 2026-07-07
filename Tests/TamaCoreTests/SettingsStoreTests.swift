@@ -43,4 +43,14 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(FontSize.medium.factor, 1.15)
         XCTAssertEqual(FontSize.large.factor, 1.3)
     }
+
+    func test_notification_toggles_default_off_and_persist() {
+        let store = SettingsStore(defaults: freshDefaults())
+        XCTAssertFalse(store.notifyAgentQuiet)
+        XCTAssertFalse(store.notifyContextHigh)
+        store.notifyAgentQuiet = true
+        store.notifyContextHigh = true
+        XCTAssertTrue(store.notifyAgentQuiet)
+        XCTAssertTrue(store.notifyContextHigh)
+    }
 }

@@ -28,6 +28,8 @@ public struct SettingsStore {
     private enum Key {
         static let appearance = "tama.appearance"
         static let fontSize = "tama.fontSize"
+        static let notifyAgentQuiet = "tama.notifyAgentQuiet"
+        static let notifyContextHigh = "tama.notifyContextHigh"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -42,5 +44,18 @@ public struct SettingsStore {
     public var fontSize: FontSize {
         get { defaults.string(forKey: Key.fontSize).flatMap(FontSize.init(rawValue:)) ?? .small }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.fontSize) }
+    }
+
+    /// Alert when a streaming agent goes quiet (likely waiting for input). Off by default —
+    /// the system notification-permission prompt only ever appears after a user opt-in.
+    public var notifyAgentQuiet: Bool {
+        get { defaults.bool(forKey: Key.notifyAgentQuiet) }
+        nonmutating set { defaults.set(newValue, forKey: Key.notifyAgentQuiet) }
+    }
+
+    /// Warn when a session's context window passes 85% (compaction imminent). Off by default.
+    public var notifyContextHigh: Bool {
+        get { defaults.bool(forKey: Key.notifyContextHigh) }
+        nonmutating set { defaults.set(newValue, forKey: Key.notifyContextHigh) }
     }
 }

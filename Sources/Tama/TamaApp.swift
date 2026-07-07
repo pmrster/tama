@@ -37,6 +37,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let monitor = AgentMonitor(reader: reader,
                                    historyReader: HistoryReader(),
                                    historyStore: .applicationSupport())
+        monitor.onNotifications = { events in
+            let s = AppSettings.shared
+            let allowed = events.filter {
+                ($0.kind == .agentQuiet && s.notifyAgentQuiet)
+                    || ($0.kind == .contextHigh && s.notifyContextHigh)
+            }
+            Notifier.shared.post(allowed)
+        }
         // The pinned panel shows the same dashboard, hosted in an AppKit window.
         let pinnedMonitor = monitor
         PinnedPanel.shared.configure { DashboardView(monitor: pinnedMonitor, fixedWidth: nil) }

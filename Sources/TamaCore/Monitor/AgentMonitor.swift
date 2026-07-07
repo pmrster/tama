@@ -32,6 +32,10 @@ public final class AgentMonitor: ObservableObject {
     private var storedHistory: [DayUsage] = []
     private var lastHistoryScanAt: Date = .distantPast
     private var lastHistoryDayKey = ""
+    private var notificationPolicy = NotificationPolicy()
+    /// Shell hook: receives policy events after each poll. The shell filters by the user's
+    /// toggles and posts via UserNotifications; core stays AppKit-free.
+    public var onNotifications: (([NotificationEvent]) -> Void)?
 
     public init(reader: ActivityScanning, now: @escaping () -> Date = { Date() },
                 runsInBackground: Bool = true, estimator: CostEstimator = CostEstimator(),
@@ -187,6 +191,8 @@ public final class AgentMonitor: ObservableObject {
         state = AppState(sessions: [], usage: usage, lastUpdated: now,
                          activeSessions: activity.sessions, mood: mood, ollama: ollama,
                          history: published)
+        let events = notificationPolicy.evaluate(sessions: activity.sessions, now: now)
+        if !events.isEmpty { onNotifications?(events) }
     }
 
     public func start(interval: TimeInterval = 7) {

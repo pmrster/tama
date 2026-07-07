@@ -181,4 +181,23 @@ final class AgentMonitorHistoryTests: XCTestCase {
         m.refresh()
         XCTAssertEqual(m.state.history, [])
     }
+
+    func test_monitor_forwards_policy_events_to_callback() {
+        var now = t0
+        let reader = HistoryStubReader()
+        let live = SessionInfo(provider: .claudeCode, project: "tama", folder: "/x/tama",
+                               lastActivity: t0, sessionId: "s1")
+        reader.activity = Activity(sessions: [live], totals: [:])
+        let m = AgentMonitor(reader: reader, now: { now }, runsInBackground: false,
+                             catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mon-\(UUID().uuidString)")),
+                             calendar: utc)
+        var received: [NotificationEvent] = []
+        m.onNotifications = { received += $0 }
+        m.refresh()                                   // observes streaming
+        XCTAssertTrue(received.isEmpty)
+        now = t0.addingTimeInterval(240)              // 4 min quiet
+        m.refresh()
+        XCTAssertEqual(received.map(\.kind), [.agentQuiet])
+    }
 }
