@@ -25,13 +25,24 @@ public final class AgentMonitor: ObservableObject {
     private let moodEngine: MoodEngine
     private let catStateStore: CatStateStore
     private var catState: CatState
+    private let historyReader: HistoryScanning?
+    private let historyStore: HistoryStore?
+    private let historyRefreshInterval: TimeInterval
+    private let calendar: Calendar
+    private var storedHistory: [DayUsage] = []
+    private var lastHistoryScanAt: Date = .distantPast
+    private var lastHistoryDayKey = ""
 
     public init(reader: ActivityScanning, now: @escaping () -> Date = { Date() },
                 runsInBackground: Bool = true, estimator: CostEstimator = CostEstimator(),
                 moodEngine: MoodEngine = MoodEngine(),
                 catStateStore: CatStateStore = .applicationSupport(),
                 presenceScanner: OllamaPresenceScanning = SysctlProcessScanner(),
-                ollamaReader: OllamaReading = OllamaReader()) {
+                ollamaReader: OllamaReading = OllamaReader(),
+                historyReader: HistoryScanning? = nil,
+                historyStore: HistoryStore? = nil,
+                historyRefreshInterval: TimeInterval = 3600,
+                calendar: Calendar = .current) {
         self.reader = reader
         self.presenceScanner = presenceScanner
         self.ollamaReader = ollamaReader
@@ -41,30 +52,84 @@ public final class AgentMonitor: ObservableObject {
         self.moodEngine = moodEngine
         self.catStateStore = catStateStore
         self.catState = catStateStore.load()
+        self.historyReader = historyReader
+        self.historyStore = historyStore
+        self.historyRefreshInterval = historyRefreshInterval
+        self.calendar = calendar
     }
 
     /// Estimated pay-as-you-go API cost of this session's tokens today (not a subscription bill).
     public func cost(_ s: SessionInfo) -> Double { s.cost(using: estimator) }
 
+    /// Price an arbitrary token breakdown at the given provider/model tier rates.
+    public func cost(_ bd: TokenBreakdown, provider: Provider, model: String?) -> Double {
+        estimator.cost(bd, provider: provider, model: model)
+    }
+
     /// Reads the logs off the main thread (cached) and publishes the new state on main.
     public func refresh() {
         let now = nowProvider()
         let window = self.window
+        let todayKey = UsageHistory.dayKey(now, calendar: calendar)
+        let historyDue = historyReader != nil &&
+            (now.timeIntervalSince(lastHistoryScanAt) >= historyRefreshInterval
+             || todayKey != lastHistoryDayKey)
         guard runsInBackground else {
-            apply(reader.scan(window: window), ollama: scanOllama(), now: now); return
+            let activity = reader.scan(window: window)
+            let todayActivity = window == .today ? activity : reader.scan(window: .today)
+            let history = historyDue
+                ? Self.refreshHistory(reader: historyReader, store: historyStore, now: now, calendar: calendar)
+                : nil
+            apply(activity, todayActivity: todayActivity, ollama: scanOllama(), history: history, now: now)
+            return
         }
         if inFlight { return }                          // skip overlapping scans
         inFlight = true
         let reader = self.reader
         let scanOllama = self.scanOllama   // captured closures touch no main-actor state
+        let historyReader = self.historyReader
+        let historyStore = self.historyStore
+        let calendar = self.calendar
         ioQueue.async { [weak self] in
             let activity = reader.scan(window: window)
+            // The history's "today" entry must always be TODAY-windowed, even when the UI
+            // toggle shows LAST 24H. The reader's per-file cache makes the second scan cheap.
+            let todayActivity = window == .today ? activity : reader.scan(window: .today)
             let ollama = scanOllama()
+            let history = historyDue
+                ? Self.refreshHistory(reader: historyReader, store: historyStore, now: now, calendar: calendar)
+                : nil
             DispatchQueue.main.async {
-                self?.apply(activity, ollama: ollama, now: now)
+                self?.apply(activity, todayActivity: todayActivity, ollama: ollama, history: history, now: now)
                 self?.inFlight = false
             }
         }
+    }
+
+    /// Scan → merge with the stored rollups → persist → return. Runs on the IO queue.
+    private nonisolated static func refreshHistory(reader: HistoryScanning?, store: HistoryStore?,
+                                                   now: Date, calendar: Calendar) -> [DayUsage]? {
+        guard let reader else { return nil }
+        let scanned = reader.scanHistory(days: 30)
+        let stored = store?.load() ?? []
+        let startOfToday = calendar.startOfDay(for: now)
+        let oldest = calendar.date(byAdding: .day, value: -61, to: startOfToday) ?? startOfToday
+        let merged = HistoryStore.merge(stored: stored, scanned: scanned,
+                                        oldestKey: UsageHistory.dayKey(oldest, calendar: calendar),
+                                        todayKey: UsageHistory.dayKey(now, calendar: calendar))
+        store?.save(merged)
+        return merged
+    }
+
+    /// The live scan reshaped as today's DayUsage (models from the scan's per-model split;
+    /// projects from the displayed sessions' per-session breakdowns).
+    private nonisolated static func dayUsage(from activity: Activity, day: String) -> DayUsage {
+        var d = DayUsage(day: day, models: activity.modelBreakdowns)
+        for s in activity.sessions where s.breakdown.total > 0 {
+            d.projects[s.provider, default: [:]][s.project] =
+                (d.projects[s.provider]?[s.project] ?? TokenBreakdown()) + s.breakdown
+        }
+        return d
     }
 
     /// Detects the local Ollama server (process table) and enriches it from `server.log`.
@@ -83,7 +148,8 @@ public final class AgentMonitor: ObservableObject {
         return status
     }
 
-    private func apply(_ activity: Activity, ollama: OllamaStatus?, now: Date) {
+    private func apply(_ activity: Activity, todayActivity: Activity, ollama: OllamaStatus?,
+                       history: [DayUsage]?, now: Date) {
         var usage: [Provider: UsageStats] = [:]
         for (provider, tokens) in activity.totals {
             // Price each model's tokens at its own tier rate, then sum. Falls back to the rolled-up
@@ -104,8 +170,23 @@ public final class AgentMonitor: ObservableObject {
             catState = newCatState
             catStateStore.save(newCatState)
         }
+        let todayKey = UsageHistory.dayKey(now, calendar: calendar)
+        if let history {
+            storedHistory = history
+            lastHistoryScanAt = now
+            lastHistoryDayKey = todayKey
+        }
+        let published: [DayUsage]
+        if historyReader == nil {
+            published = []
+        } else {
+            let liveToday = Self.dayUsage(from: todayActivity, day: todayKey)
+            published = (storedHistory.filter { $0.day != todayKey } + [liveToday])
+                .sorted { $0.day < $1.day }
+        }
         state = AppState(sessions: [], usage: usage, lastUpdated: now,
-                         activeSessions: activity.sessions, mood: mood, ollama: ollama)
+                         activeSessions: activity.sessions, mood: mood, ollama: ollama,
+                         history: published)
     }
 
     public func start(interval: TimeInterval = 7) {

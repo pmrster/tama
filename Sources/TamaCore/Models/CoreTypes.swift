@@ -184,11 +184,16 @@ public struct AppState: Sendable, Equatable {
     public let mood: Mood
     /// Local Ollama server, when one is running. Nil hides the tile (not a coding-agent session).
     public let ollama: OllamaStatus?
+    /// Per-day usage history (ascending). Today's entry is rebuilt from the LIVE scan each
+    /// poll; older days come from the hybrid log-scan + store merge. Empty when the monitor
+    /// was built without a history reader.
+    public let history: [DayUsage]
     public init(sessions: [AgentSession], usage: [Provider: UsageStats], lastUpdated: Date,
                 activeSessions: [SessionInfo] = [], mood: Mood = .napping,
-                ollama: OllamaStatus? = nil) {
+                ollama: OllamaStatus? = nil, history: [DayUsage] = []) {
         self.sessions = sessions; self.usage = usage; self.lastUpdated = lastUpdated
         self.activeSessions = activeSessions; self.mood = mood; self.ollama = ollama
+        self.history = history
     }
     public static let empty = AppState(sessions: [], usage: [:], lastUpdated: .distantPast)
 }

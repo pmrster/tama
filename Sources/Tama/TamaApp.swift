@@ -34,7 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #else
         let reader: ActivityScanning = ActiveSessionsReader(now: { Date() })
         #endif
-        let monitor = AgentMonitor(reader: reader)
+        let monitor = AgentMonitor(reader: reader,
+                                   historyReader: HistoryReader(),
+                                   historyStore: .applicationSupport())
         // The pinned panel shows the same dashboard, hosted in an AppKit window.
         let pinnedMonitor = monitor
         PinnedPanel.shared.configure { DashboardView(monitor: pinnedMonitor, fixedWidth: nil) }

@@ -108,3 +108,77 @@ private struct MoodMonitorStubScanner: ActivityScanning {
     let activity: Activity
     func scan() -> Activity { activity }
 }
+
+// MARK: - Usage history wiring
+
+private final class HistoryStubReader: ActivityScanning, @unchecked Sendable {
+    var activity = Activity.empty
+    func scan() -> Activity { activity }
+}
+
+private final class HistoryStub: HistoryScanning, @unchecked Sendable {
+    var days: [DayUsage] = []
+    private(set) var calls = 0
+    func scanHistory(days n: Int) -> [DayUsage] { calls += 1; return days }
+}
+
+@MainActor
+final class AgentMonitorHistoryTests: XCTestCase {
+    private var utc: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+    private let t0 = ISO8601DateFormatter.shared.date(from: "2026-07-07T10:00:00.000Z")!
+
+    private func makeMonitor(now: @escaping () -> Date, history: HistoryStub) -> AgentMonitor {
+        AgentMonitor(reader: HistoryStubReader(), now: now, runsInBackground: false,
+                     catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                        .appendingPathComponent("mon-\(UUID().uuidString)")),
+                     historyReader: history, calendar: utc)
+    }
+
+    func test_history_scan_runs_once_then_waits_for_the_interval() {
+        var now = t0
+        let stub = HistoryStub()
+        stub.days = [DayUsage(day: "2026-07-06",
+                              models: [.claudeCode: ["opus": TokenBreakdown(input: 5)]])]
+        let m = makeMonitor(now: { now }, history: stub)
+        m.refresh()
+        XCTAssertEqual(stub.calls, 1)
+        XCTAssertTrue(m.state.history.contains { $0.day == "2026-07-06" })
+        m.refresh()                                   // same instant — not due again
+        XCTAssertEqual(stub.calls, 1)
+        now = t0.addingTimeInterval(3601)             // past the hourly interval
+        m.refresh()
+        XCTAssertEqual(stub.calls, 2)
+    }
+
+    func test_day_rollover_triggers_rescan_before_the_interval() {
+        var now = ISO8601DateFormatter.shared.date(from: "2026-07-07T23:59:00.000Z")!
+        let stub = HistoryStub()
+        let m = makeMonitor(now: { now }, history: stub)
+        m.refresh()
+        XCTAssertEqual(stub.calls, 1)
+        now = now.addingTimeInterval(120)             // 00:01 next day — only 2 min later
+        m.refresh()
+        XCTAssertEqual(stub.calls, 2)
+    }
+
+    func test_published_history_always_carries_live_today_entry() {
+        let stub = HistoryStub()
+        stub.days = [DayUsage(day: "2026-07-06")]
+        let m = makeMonitor(now: { self.t0 }, history: stub)
+        m.refresh()
+        XCTAssertEqual(m.state.history.last?.day, "2026-07-07")   // live today appended
+    }
+
+    func test_no_history_reader_publishes_empty_history() {
+        let m = AgentMonitor(reader: HistoryStubReader(), now: { self.t0 }, runsInBackground: false,
+                             catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mon-\(UUID().uuidString)")),
+                             calendar: utc)
+        m.refresh()
+        XCTAssertEqual(m.state.history, [])
+    }
+}
