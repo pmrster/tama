@@ -43,6 +43,9 @@ final class SafetyNoWriteTests: XCTestCase {
         _ = ActiveSessionsReader(claudeProjectsDir: root.appendingPathComponent("claude"),
                                  codexSessionsDir: root.appendingPathComponent("codex"),
                                  now: { now }, calendar: cal).read()
+        _ = HistoryReader(claudeProjectsDir: root.appendingPathComponent("claude"),
+                          codexSessionsDir: root.appendingPathComponent("codex"),
+                          now: { now }, calendar: cal).scanHistory(days: 30)
         _ = OllamaReader(logURL: ollamaLogs.appendingPathComponent("server.log")).read()
 
         let after = snapshot(root)
