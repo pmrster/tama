@@ -19,14 +19,18 @@ public struct DayUsage: Sendable, Equatable, Codable {
     public static func sum(_ days: [DayUsage], as day: String) -> DayUsage {
         var out = DayUsage(day: day)
         for d in days {
-            for (p, mm) in d.models {
-                for (m, bd) in mm { out.models[p, default: [:]][m] = (out.models[p]?[m] ?? TokenBreakdown()) + bd }
-            }
-            for (p, pp) in d.projects {
-                for (name, bd) in pp { out.projects[p, default: [:]][name] = (out.projects[p]?[name] ?? TokenBreakdown()) + bd }
-            }
+            mergeInto(&out.models, d.models)
+            mergeInto(&out.projects, d.projects)
         }
         return out
+    }
+
+    /// Adds every `TokenBreakdown` in `src` into the matching (provider, key) slot in `dst`.
+    private static func mergeInto(_ dst: inout [Provider: [String: TokenBreakdown]],
+                                   _ src: [Provider: [String: TokenBreakdown]]) {
+        for (p, inner) in src {
+            for (k, bd) in inner { dst[p, default: [:]][k] = (dst[p]?[k] ?? TokenBreakdown()) + bd }
+        }
     }
 
     public var totalTokens: Int {

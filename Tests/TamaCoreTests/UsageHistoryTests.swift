@@ -60,8 +60,12 @@ final class UsageHistoryTests: XCTestCase {
         let data = try enc.encode([d])
         let decoded = try JSONDecoder().decode([DayUsage].self, from: data)
         XCTAssertEqual(decoded, [d])
-        // File-format guard: provider dict keys must be raw values ("claudeCode"), not arrays.
-        let json = String(decoding: data, as: UTF8.self)
-        XCTAssertTrue(json.contains("\"claudeCode\""), "provider keys must encode as JSON object keys: \(json)")
+        // File-format guard: provider dict keys must encode as JSON object keys ("claudeCode": …),
+        // not as a flat array (["claudeCode", {...}]). A string-contains check can't tell those
+        // shapes apart, so decode structurally via JSONSerialization instead.
+        let root = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        let models = root?.first?["models"] as? [String: Any]
+        XCTAssertNotNil(models?["claudeCode"],
+                         "provider keys must encode as JSON object keys, not a flat array: \(String(decoding: data, as: UTF8.self))")
     }
 }
