@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Provider: String, CaseIterable, Sendable {
+public enum Provider: String, CaseIterable, Sendable, Codable, CodingKeyRepresentable {
     case claudeCode
     case codex
     case gemini
@@ -83,7 +83,7 @@ public struct AgentSession: Sendable, Equatable, Identifiable {
     }
 }
 
-public struct TokenBreakdown: Sendable, Equatable {
+public struct TokenBreakdown: Sendable, Equatable, Codable {
     public var input: Int
     public var output: Int
     public var cacheRead: Int
