@@ -64,36 +64,6 @@ private enum MetricKind: Int, CaseIterable {
     func value(_ sessions: [SessionInfo]) -> Int { sessions.reduce(0) { $0 + value($1) } }
 }
 
-private func providerTint(_ p: Provider) -> Color {
-    switch p {
-    case .claudeCode: return Palette.coral
-    case .codex: return Palette.green
-    case .gemini: return Palette.blue
-    case .antigravity: return Palette.purple
-    }
-}
-
-private func formatTokens(_ n: Int) -> String {
-    if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-    if n >= 1_000 { return String(format: "%.1fk", Double(n) / 1_000) }
-    return "\(n)"
-}
-
-/// Estimated cost, prefixed with `~` to read as an estimate. Empty for zero (e.g. Gemini).
-private func formatCost(_ d: Double) -> String {
-    if d <= 0 { return "" }
-    if d < 0.01 { return "~<$0.01" }
-    if d >= 1_000 { return String(format: "~$%.1fk", d / 1_000) }
-    if d >= 100 { return String(format: "~$%.0f", d) }
-    return String(format: "~$%.2f", d)
-}
-
-/// The shared caveat: these are public API rates, not the user's actual (often subscription) bill.
-private let costCaveat = "Estimated pay-as-you-go API cost from public per-token rates — "
-    + "not your actual bill (Max/Pro subscriptions are billed differently). "
-    + "May read slightly under Claude's /cost, which also counts interrupted/in-flight turns "
-    + "not yet saved to the logs Tama reads."
-
 /// Collapse/expand state, shared so it survives the popover being recreated.
 @MainActor final class UIState: ObservableObject {
     static let shared = UIState()
@@ -107,6 +77,9 @@ private let costCaveat = "Estimated pay-as-you-go API cost from public per-token
     /// Per-row overrides (session/folder/group key → `MetricKind.rawValue`). Tapping a single
     /// number sets one here; the header button clears these so all rows snap back to the default.
     @Published var rowMetric: [String: Int] = [:]
+    @Published var usageExpanded = false
+    /// Window the expanded usage tables cover: 1 (today), 7, or 30 days.
+    @Published var usageWindowDays = 7
 }
 
 private struct FolderGroup: Identifiable {
@@ -189,6 +162,8 @@ struct DashboardView: View {
                 .clipped()                       // keep the sprite + meow inside the strip
                 .padding(.horizontal, 14)        // inset so the cat doesn't touch the edges
                 .padding(.top, 2).padding(.bottom, 6)
+            Divider().overlay(Palette.panelEdge)
+            UsageSection(monitor: monitor)
             Divider().overlay(Palette.panelEdge)
             tree
             Divider().overlay(Palette.panelEdge)
