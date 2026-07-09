@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- New **Usage** section at the top of the dashboard: Today / 7d / 30d estimated cost + token
+  tiles, expandable into a 30-day daily-cost histogram and per-model / per-provider /
+  per-project breakdowns (Fable and every other priced tier appear per model). History is
+  hybrid: a read-only back-scan of up to 30 days of Claude/Codex logs, merged with rollups the
+  app persists in its own `~/Library/Application Support/Tama/history.json` so days that age
+  out of the agents' log retention survive. Cost is never persisted — always re-priced from
+  tokens at current rates. Plan-quota ("% left") is deliberately absent: it would require the
+  network.
+- Optional local notifications, **both off by default** (the permission prompt only appears on
+  first opt-in in Settings): an alert when a streaming agent goes quiet for 3+ minutes (likely
+  waiting for input), and a warning when a session's context window passes 85% (re-arms below
+  75%). Local `UserNotifications` only — no network.
 - Detect a locally-running **Ollama** server and show it as its own collapsible group —
   **Ollama → each model used this session** — separate from the project-grouped agent sessions,
   marked `local · free` (local inference has no cost). Presence comes from a read-only,

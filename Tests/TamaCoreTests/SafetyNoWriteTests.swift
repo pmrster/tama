@@ -82,6 +82,11 @@ final class SafetyNoWriteTests: XCTestCase {
                                             codexSessionsDir: root.appendingPathComponent("codex"),
                                             now: { now }, calendar: cal).read()
         XCTAssertTrue(activity.isEmpty, "active-session scan must not follow symlinked logs or directories")
+
+        let history = HistoryReader(claudeProjectsDir: claudeRoot,
+                                    codexSessionsDir: root.appendingPathComponent("codex"),
+                                    now: { now }, calendar: cal).scanHistory(days: 30)
+        XCTAssertTrue(history.isEmpty, "history scan must not follow symlinked logs or directories")
         try? fm.removeItem(at: root)
     }
 
@@ -108,6 +113,27 @@ final class SafetyNoWriteTests: XCTestCase {
         XCTAssertTrue(ActiveSessionsReader(claudeProjectsDir: root.appendingPathComponent("claude"),
                                            codexSessionsDir: root.appendingPathComponent("codex"),
                                            now: { now }, calendar: cal).read().isEmpty)
+        XCTAssertTrue(HistoryReader(claudeProjectsDir: root.appendingPathComponent("claude"),
+                                    codexSessionsDir: root.appendingPathComponent("codex"),
+                                    now: { now }, calendar: cal).scanHistory(days: 30).isEmpty)
+        try? fm.removeItem(at: root)
+    }
+
+    func test_history_store_writes_only_inside_its_own_directory() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("store-safety-\(UUID().uuidString)")
+        let claudeProj = root.appendingPathComponent("claude/-Users-x-p")
+        try fm.createDirectory(at: claudeProj, withIntermediateDirectories: true)
+        try "{}".write(to: claudeProj.appendingPathComponent("s.jsonl"), atomically: true, encoding: .utf8)
+        let before = snapshot(root.appendingPathComponent("claude"))
+
+        let store = HistoryStore(directory: root.appendingPathComponent("Tama"))
+        store.save([DayUsage(day: "2026-07-01",
+                             models: [.claudeCode: ["opus": TokenBreakdown(input: 1)]])])
+
+        XCTAssertEqual(before, snapshot(root.appendingPathComponent("claude")),
+                       "the store must never touch anything outside its own directory")
+        XCTAssertTrue(fm.fileExists(atPath: root.appendingPathComponent("Tama/history.json").path))
         try? fm.removeItem(at: root)
     }
 }
