@@ -49,6 +49,9 @@ struct UsageSection: View {
             }
             if ui.usageExpanded {
                 histogram
+                if monitor.state.hourlyActivity.contains(where: { $0 > 0 }) {
+                    UsageHeatmap(grid: monitor.state.hourlyActivity)
+                }
                 breakdownTables(rollup(ui.usageWindowDays))
             }
         }
