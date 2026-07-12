@@ -2,13 +2,12 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-07-12
+
 - **Usage section is now tabbed** — the expanded detail shows one panel at a time via a
   Chart / Time / Breakdown pill row instead of stacking everything, so it stays readable in the
   menu-bar popover. The Time (heatmap) tab hides when there's no Claude hourly data, and clicking
   a day in the cost chart jumps straight to that day's Breakdown.
-
-## 0.4.0 — 2026-07-12
-
 - **Usage section, round 2:** a 7×24 weekday×hour **activity heatmap** (Claude-only — Codex logs
   carry no per-turn timestamps; last ~30 days, your local time, computed live and never persisted);
   a **token-mix bar** showing fresh vs cache-read vs cache-write, exposing that cache re-reads
