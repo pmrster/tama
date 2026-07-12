@@ -1,10 +1,24 @@
 import SwiftUI
 import TamaCore
 
-/// Collapsible Today / 7d / 30d usage summary: three stat tiles, and when expanded a
-/// 30-day cost histogram plus per-model / per-provider / per-project tables for the
-/// selected window. All figures derive from `state.history` (hybrid log-scan + store);
-/// the TODAY tile uses the live per-poll totals so it always matches the TODAY bar.
+/// Which detail panel the expanded Usage section shows. In-memory view state.
+enum UsageTab: String, CaseIterable {
+    case chart, time, breakdown
+    var label: String {
+        switch self {
+        case .chart: return "Chart"
+        case .time: return "Time"
+        case .breakdown: return "Breakdown"
+        }
+    }
+}
+
+/// Collapsible Today / 7d / 30d usage summary: three stat tiles (with 7d/30d spend-delta
+/// chips), and when expanded a tabbed detail region (`UsageTab`) showing ONE panel at a time —
+/// Chart (30-day cost histogram), Time (7×24 weekday×hour heatmap), or Breakdown (token-mix bar
+/// + per-model / per-provider / per-project tables). All figures derive from `state.history`
+/// (hybrid log-scan + store) and `state.hourlyActivity`; the TODAY tile uses the live per-poll
+/// totals so it always matches the TODAY bar.
 struct UsageSection: View {
     @ObservedObject var monitor: AgentMonitor
     @ObservedObject private var ui = UIState.shared
@@ -30,6 +44,15 @@ struct UsageSection: View {
     }
     private var liveTodayTokens: Int { monitor.state.usage.values.reduce(0) { $0 + $1.todayTokens } }
     private var liveTodayCost: Double { monitor.state.usage.values.reduce(0) { $0 + $1.todayCost } }
+
+    /// True when the heatmap has any data (Claude hourly activity present).
+    private var hasHourly: Bool { monitor.state.hourlyActivity.contains(where: { $0 > 0 }) }
+
+    /// Tabs to show — Time is hidden when there's no hourly data (no dead tab).
+    private var visibleTabs: [UsageTab] { UsageTab.allCases.filter { $0 != .time || hasHourly } }
+
+    /// The tab to actually render — falls back to .chart if the selected tab isn't currently visible.
+    private var effectiveTab: UsageTab { visibleTabs.contains(ui.usageTab) ? ui.usageTab : .chart }
 
     /// The DayUsage the expanded tables / cache bar show: the drilled-down day if any, else the window.
     private func displayed() -> DayUsage {
@@ -65,17 +88,46 @@ struct UsageSection: View {
                 .help(ui.usageExpanded ? "Collapse usage breakdown" : "Expand usage breakdown")
             }
             if ui.usageExpanded {
-                histogram
-                drillHeader
-                if monitor.state.hourlyActivity.contains(where: { $0 > 0 }) {
-                    UsageHeatmap(grid: monitor.state.hourlyActivity)
-                }
-                cacheBar(displayed())
-                breakdownTables(displayed())
+                usagePills
+                usagePanel
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
         .help(costCaveat)
+    }
+
+    /// Segmented control choosing which detail panel shows.
+    private var usagePills: some View {
+        HStack(spacing: 4) {
+            ForEach(visibleTabs, id: \.self) { tab in
+                let sel = effectiveTab == tab
+                Button { ui.usageTab = tab } label: {
+                    Text(tab.label)
+                        .font(.system(size: scaled(8.5), weight: sel ? .heavy : .semibold, design: .monospaced))
+                        .foregroundStyle(sel ? Palette.yellow : Palette.dim)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5)
+                            .fill(sel ? Palette.dim.opacity(0.14) : .clear))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// The single detail panel for the current tab.
+    @ViewBuilder
+    private var usagePanel: some View {
+        switch effectiveTab {
+        case .chart:
+            histogram
+        case .time:
+            if hasHourly { UsageHeatmap(grid: monitor.state.hourlyActivity) }
+        case .breakdown:
+            drillHeader
+            cacheBar(displayed())
+            breakdownTables(displayed())
+        }
     }
 
     @ViewBuilder
@@ -137,7 +189,14 @@ struct UsageSection: View {
         let maxCost = max(costs.max() ?? 0, 0.000001)
         return HStack(alignment: .bottom, spacing: 2) {
             ForEach(Array(zip(keys, costs)), id: \.0) { day, c in
-                Button { ui.usageSelectedDay = (ui.usageSelectedDay == day ? nil : day) } label: {
+                Button {
+                    if ui.usageSelectedDay == day {
+                        ui.usageSelectedDay = nil               // same bar re-clicked (on Chart) → clear
+                    } else {
+                        ui.usageSelectedDay = day
+                        ui.usageTab = .breakdown                 // new day → show its breakdown
+                    }
+                } label: {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(ui.usageSelectedDay == day ? Palette.coral
                               : (day == todayKey ? Palette.yellow : Palette.dim.opacity(0.4)))

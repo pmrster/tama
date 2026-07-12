@@ -83,6 +83,8 @@ private enum MetricKind: Int, CaseIterable {
     /// A day key ("yyyy-MM-dd") when the user has clicked a histogram bar to inspect one day;
     /// nil = show the selected window rollup.
     @Published var usageSelectedDay: String? = nil
+    /// Which expanded Usage detail panel is shown (Chart / Time / Breakdown). In-memory.
+    @Published var usageTab: UsageTab = .chart
 }
 
 private struct FolderGroup: Identifiable {
