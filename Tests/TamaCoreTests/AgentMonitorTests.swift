@@ -201,4 +201,29 @@ final class AgentMonitorHistoryTests: XCTestCase {
         m.refresh()
         XCTAssertEqual(received.map(\.kind), [.agentQuiet])
     }
+
+    func test_publishes_hourly_activity_from_scan_and_retains_between_scans() {
+        var now = t0
+        let stub = HistoryStub()
+        var grid = Array(repeating: 0, count: 168)
+        grid[34] = 999
+        stub.weekdayHour = grid
+        let m = makeMonitor(now: { now }, history: stub)
+        m.refresh()
+        XCTAssertEqual(m.state.hourlyActivity.count, 168)
+        XCTAssertEqual(m.state.hourlyActivity[34], 999)
+        // A poll where history is NOT due keeps the last grid (doesn't blank it).
+        now = t0.addingTimeInterval(5)
+        m.refresh()
+        XCTAssertEqual(m.state.hourlyActivity[34], 999)
+    }
+
+    func test_no_history_reader_publishes_empty_hourly_activity() {
+        let m = AgentMonitor(reader: HistoryStubReader(), now: { self.t0 }, runsInBackground: false,
+                             catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mon-\(UUID().uuidString)")),
+                             calendar: utc)
+        m.refresh()
+        XCTAssertEqual(m.state.hourlyActivity, [])
+    }
 }

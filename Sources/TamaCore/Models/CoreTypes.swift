@@ -188,12 +188,15 @@ public struct AppState: Sendable, Equatable {
     /// poll; older days come from the hybrid log-scan + store merge. Empty when the monitor
     /// was built without a history reader.
     public let history: [DayUsage]
+    /// Claude-only weekday×hour token grid (168, index (weekday-1)*24+hour), for the heatmap.
+    /// Live from the last history scan — never persisted; `[]` when no history reader.
+    public let hourlyActivity: [Int]
     public init(sessions: [AgentSession], usage: [Provider: UsageStats], lastUpdated: Date,
                 activeSessions: [SessionInfo] = [], mood: Mood = .napping,
-                ollama: OllamaStatus? = nil, history: [DayUsage] = []) {
+                ollama: OllamaStatus? = nil, history: [DayUsage] = [], hourlyActivity: [Int] = []) {
         self.sessions = sessions; self.usage = usage; self.lastUpdated = lastUpdated
         self.activeSessions = activeSessions; self.mood = mood; self.ollama = ollama
-        self.history = history
+        self.history = history; self.hourlyActivity = hourlyActivity
     }
     public static let empty = AppState(sessions: [], usage: [:], lastUpdated: .distantPast)
 }

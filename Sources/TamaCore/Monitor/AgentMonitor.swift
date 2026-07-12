@@ -30,6 +30,7 @@ public final class AgentMonitor: ObservableObject {
     private let historyRefreshInterval: TimeInterval
     private let calendar: Calendar
     private var storedHistory: [DayUsage] = []
+    private var storedHourly: [Int] = []
     private var lastHistoryScanAt: Date = .distantPast
     private var lastHistoryDayKey = ""
     private var notificationPolicy = NotificationPolicy()
@@ -112,17 +113,17 @@ public final class AgentMonitor: ObservableObject {
 
     /// Scan → merge with the stored rollups → persist → return. Runs on the IO queue.
     private nonisolated static func refreshHistory(reader: HistoryScanning?, store: HistoryStore?,
-                                                   now: Date, calendar: Calendar) -> [DayUsage]? {
+                                                   now: Date, calendar: Calendar) -> (days: [DayUsage], hourly: [Int])? {
         guard let reader else { return nil }
-        let scanned = reader.scanHistory(days: 30).days
+        let scan = reader.scanHistory(days: 30)
         let stored = store?.load() ?? []
         let startOfToday = calendar.startOfDay(for: now)
         let oldest = calendar.date(byAdding: .day, value: -61, to: startOfToday) ?? startOfToday
-        let merged = HistoryStore.merge(stored: stored, scanned: scanned,
+        let merged = HistoryStore.merge(stored: stored, scanned: scan.days,
                                         oldestKey: UsageHistory.dayKey(oldest, calendar: calendar),
                                         todayKey: UsageHistory.dayKey(now, calendar: calendar))
         store?.save(merged)
-        return merged
+        return (merged, scan.weekdayHour)
     }
 
     /// The live scan reshaped as today's DayUsage (models from the scan's per-model split;
@@ -153,7 +154,7 @@ public final class AgentMonitor: ObservableObject {
     }
 
     private func apply(_ activity: Activity, todayActivity: Activity, ollama: OllamaStatus?,
-                       history: [DayUsage]?, now: Date) {
+                       history: (days: [DayUsage], hourly: [Int])?, now: Date) {
         var usage: [Provider: UsageStats] = [:]
         for (provider, tokens) in activity.totals {
             // Price each model's tokens at its own tier rate, then sum. Falls back to the rolled-up
@@ -176,21 +177,25 @@ public final class AgentMonitor: ObservableObject {
         }
         let todayKey = UsageHistory.dayKey(now, calendar: calendar)
         if let history {
-            storedHistory = history
+            storedHistory = history.days
+            storedHourly = history.hourly
             lastHistoryScanAt = now
             lastHistoryDayKey = todayKey
         }
         let published: [DayUsage]
+        let publishedHourly: [Int]
         if historyReader == nil {
             published = []
+            publishedHourly = []
         } else {
             let liveToday = Self.dayUsage(from: todayActivity, day: todayKey)
             published = (storedHistory.filter { $0.day != todayKey } + [liveToday])
                 .sorted { $0.day < $1.day }
+            publishedHourly = storedHourly
         }
         state = AppState(sessions: [], usage: usage, lastUpdated: now,
                          activeSessions: activity.sessions, mood: mood, ollama: ollama,
-                         history: published)
+                         history: published, hourlyActivity: publishedHourly)
         let events = notificationPolicy.evaluate(sessions: activity.sessions, now: now)
         if !events.isEmpty { onNotifications?(events) }
     }
