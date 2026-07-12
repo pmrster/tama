@@ -41,7 +41,11 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
         let project: String                    // folder basename — display only
         let model: String                      // "" = unknown → provider default pricing
         let byDay: [String: TokenBreakdown]    // day key → tokens
-        let hourly: [Int: Int]                 // (weekday-1)*24+hour → tokens; empty for Codex
+        // day key → ((weekday-1)*24+hour → tokens); empty for Codex. Keyed by day so the
+        // aggregate can window-clamp it exactly like `byDay` — a file touched inside the window
+        // may still contain turns from older days (a long-lived / resumed session), and those
+        // must NOT leak into the "last 30 days" heatmap.
+        let hourlyByDay: [String: [Int: Int]]
     }
     private var cache: [String: Contribution] = [:]
 
@@ -84,7 +88,11 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
                 d.projects[c.provider, default: [:]][c.project] = (d.projects[c.provider]?[c.project] ?? TokenBreakdown()) + bd
                 byDay[day] = d
             }
-            for (cell, tok) in c.hourly where cell >= 0 && cell < 168 { grid[cell] += tok }
+            // Same [startKey, todayKey] clamp as byDay, so out-of-window turns inside a
+            // recently-touched file don't inflate the heatmap.
+            for (day, cells) in c.hourlyByDay where day >= startKey && day <= todayKey {
+                for (cell, tok) in cells where cell >= 0 && cell < 168 { grid[cell] += tok }
+            }
         }
         return UsageScan(days: byDay.values.sorted { $0.day < $1.day }, weekdayHour: grid)
     }
@@ -103,7 +111,7 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
         guard let parsed = parse(file) else { return nil }
         let entry = Contribution(mtime: mtime, size: size, provider: parsed.provider,
                                  project: parsed.project, model: parsed.model,
-                                 byDay: parsed.byDay, hourly: parsed.hourly)
+                                 byDay: parsed.byDay, hourlyByDay: parsed.hourlyByDay)
         fresh[key] = entry
         return entry
     }
@@ -131,19 +139,19 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
     private func claudeContribution(_ file: URL) -> Contribution? {
         guard let p = LogFileParser.parseClaude(file) else { return nil }
         var byDay: [String: TokenBreakdown] = [:]
-        var hourly: [Int: Int] = [:]
+        var hourlyByDay: [String: [Int: Int]] = [:]
         for (hour, bd) in p.buckets {
             let date = Date(timeIntervalSince1970: TimeInterval(hour) * 3600)
-            byDay[UsageHistory.dayKey(date, calendar: calendar)] = (byDay[UsageHistory.dayKey(date, calendar: calendar)] ?? TokenBreakdown()) + bd
+            let day = UsageHistory.dayKey(date, calendar: calendar)
+            byDay[day, default: TokenBreakdown()] = (byDay[day] ?? TokenBreakdown()) + bd
             let comps = calendar.dateComponents([.weekday, .hour], from: date)
             if let w = comps.weekday, let h = comps.hour {
-                let cell = (w - 1) * 24 + h
-                hourly[cell, default: 0] += bd.total
+                hourlyByDay[day, default: [:]][(w - 1) * 24 + h, default: 0] += bd.total
             }
         }
         return Contribution(mtime: .distantPast, size: 0, provider: .claudeCode,
                             project: URL(fileURLWithPath: p.folder).lastPathComponent,
-                            model: p.model ?? "", byDay: byDay, hourly: hourly)
+                            model: p.model ?? "", byDay: byDay, hourlyByDay: hourlyByDay)
     }
 
     private func scanCodex(days: Int, now: Date, into contributions: inout [Contribution],
@@ -175,6 +183,6 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
         guard total.total > 0 else { return nil }
         return Contribution(mtime: .distantPast, size: 0, provider: .codex,
                             project: URL(fileURLWithPath: p.folder).lastPathComponent,
-                            model: p.model ?? "", byDay: [dayKey: total], hourly: [:])
+                            model: p.model ?? "", byDay: [dayKey: total], hourlyByDay: [:])
     }
 }

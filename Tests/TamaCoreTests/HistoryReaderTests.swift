@@ -71,9 +71,14 @@ final class HistoryReaderTests: XCTestCase {
         """
         try log.write(to: root.appendingPathComponent("claude/-Users-x-p/s.jsonl"),
                       atomically: true, encoding: .utf8)
-        let days = reader(root).scanHistory(days: 30).days
-        XCTAssertNil(days.first { $0.day == "2026-05-28" })
-        XCTAssertEqual(days.first { $0.day == "2026-07-07" }?.totalTokens, 5)
+        let scan = reader(root).scanHistory(days: 30)
+        XCTAssertNil(scan.days.first { $0.day == "2026-05-28" })
+        XCTAssertEqual(scan.days.first { $0.day == "2026-07-07" }?.totalTokens, 5)
+        // The heatmap grid is window-clamped just like the day rollups: the 40-day-old turn
+        // inside this recent-mtime file must NOT leak into it. 2026-07-07 is a Tuesday
+        // (weekday 3) → cell (3-1)*24 + 10 = 58; only its 5 tokens count.
+        XCTAssertEqual(scan.weekdayHour.reduce(0, +), 5, "out-of-window turn must not inflate the heatmap")
+        XCTAssertEqual(scan.weekdayHour[58], 5)
     }
 
     func test_old_claude_files_by_mtime_are_skipped() throws {
