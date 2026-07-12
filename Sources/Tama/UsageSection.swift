@@ -89,7 +89,12 @@ struct UsageSection: View {
             Text("↓\(Int((f * 100).rounded()))%")
                 .font(.system(size: scaled(7.5), weight: .bold, design: .monospaced))
                 .foregroundStyle(Palette.green)
-        case .flat, .unavailable:
+        case .flat:
+            // Measured, but within ±0.5% of the prior window — show a neutral dash (spec §D).
+            Text("–").font(.system(size: scaled(7.5), weight: .bold, design: .monospaced))
+                .foregroundStyle(Palette.dim)
+        case .unavailable:
+            // No prior window to compare against yet — show nothing.
             EmptyView()
         }
     }
