@@ -114,7 +114,7 @@ public final class AgentMonitor: ObservableObject {
     private nonisolated static func refreshHistory(reader: HistoryScanning?, store: HistoryStore?,
                                                    now: Date, calendar: Calendar) -> [DayUsage]? {
         guard let reader else { return nil }
-        let scanned = reader.scanHistory(days: 30)
+        let scanned = reader.scanHistory(days: 30).days
         let stored = store?.load() ?? []
         let startOfToday = calendar.startOfDay(for: now)
         let oldest = calendar.date(byAdding: .day, value: -61, to: startOfToday) ?? startOfToday

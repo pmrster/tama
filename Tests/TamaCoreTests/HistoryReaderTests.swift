@@ -36,7 +36,7 @@ final class HistoryReaderTests: XCTestCase {
         """
         try log.write(to: root.appendingPathComponent("claude/-Users-x-p/s.jsonl"),
                       atomically: true, encoding: .utf8)
-        let days = reader(root).scanHistory(days: 30)
+        let days = reader(root).scanHistory(days: 30).days
         let d5 = days.first { $0.day == "2026-07-05" }
         let d6 = days.first { $0.day == "2026-07-06" }
         XCTAssertEqual(d5?.models[.claudeCode]?["claude-opus-4-8"], TokenBreakdown(input: 10, output: 1))
@@ -54,7 +54,7 @@ final class HistoryReaderTests: XCTestCase {
         """
         try log.write(to: root.appendingPathComponent("codex/2026/07/05/rollout-2026-07-05T09-00-00-abcd1234-x.jsonl"),
                       atomically: true, encoding: .utf8)
-        let days = reader(root).scanHistory(days: 30)
+        let days = reader(root).scanHistory(days: 30).days
         let d5 = days.first { $0.day == "2026-07-05" }
         XCTAssertEqual(d5?.models[.codex]?["gpt-5.3-codex"],
                        TokenBreakdown(input: 60, output: 7, cacheRead: 40))
@@ -71,7 +71,7 @@ final class HistoryReaderTests: XCTestCase {
         """
         try log.write(to: root.appendingPathComponent("claude/-Users-x-p/s.jsonl"),
                       atomically: true, encoding: .utf8)
-        let days = reader(root).scanHistory(days: 30)
+        let days = reader(root).scanHistory(days: 30).days
         XCTAssertNil(days.first { $0.day == "2026-05-28" })
         XCTAssertEqual(days.first { $0.day == "2026-07-07" }?.totalTokens, 5)
     }
@@ -86,7 +86,7 @@ final class HistoryReaderTests: XCTestCase {
         try FileManager.default.setAttributes(
             [.modificationDate: ISO8601DateFormatter.shared.date(from: "2026-05-01T00:00:00.000Z")!],
             ofItemAtPath: file.path)
-        XCTAssertTrue(reader(root).scanHistory(days: 30).isEmpty)
+        XCTAssertTrue(reader(root).scanHistory(days: 30).days.isEmpty)
     }
 
     func test_scan_is_stable_across_repeat_calls() throws {
@@ -96,7 +96,50 @@ final class HistoryReaderTests: XCTestCase {
             .write(to: root.appendingPathComponent("claude/-Users-x-p/s.jsonl"),
                    atomically: true, encoding: .utf8)
         let r = reader(root)
-        let first = r.scanHistory(days: 30)
-        XCTAssertEqual(r.scanHistory(days: 30), first)   // cache hit path returns identical data
+        let first = r.scanHistory(days: 30).days
+        XCTAssertEqual(r.scanHistory(days: 30).days, first)   // cache hit path returns identical data
+    }
+
+    func test_claude_tokens_bucketed_into_weekday_hour_cells() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // 2026-07-06 is a Monday. 10:00 and 10:30 UTC → same cell (Mon, hour 10); 22:00 → (Mon, hour 22).
+        let log = """
+        {"timestamp":"2026-07-06T10:00:00.000Z","cwd":"/x/p","type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":1}}}
+        {"timestamp":"2026-07-06T10:30:00.000Z","cwd":"/x/p","type":"assistant","message":{"id":"m2","usage":{"input_tokens":4,"output_tokens":0}}}
+        {"timestamp":"2026-07-06T22:00:00.000Z","cwd":"/x/p","type":"assistant","message":{"id":"m3","usage":{"input_tokens":5,"output_tokens":0}}}
+        """
+        try log.write(to: root.appendingPathComponent("claude/-Users-x-p/s.jsonl"), atomically: true, encoding: .utf8)
+        let scan = reader(root).scanHistory(days: 30)
+        XCTAssertEqual(scan.weekdayHour.count, 168)
+        // Monday = Calendar weekday 2 → row base (2-1)*24 = 24. Hour 10 → cell 34; hour 22 → cell 46.
+        // m1 total 11 (10 in + 1 out) + m2 total 4 (4 in) = 15 in cell 34; m3 total 5 in cell 46.
+        XCTAssertEqual(scan.weekdayHour[34], 15)
+        XCTAssertEqual(scan.weekdayHour[46], 5)
+        XCTAssertEqual(scan.weekdayHour.reduce(0, +), 20)
+    }
+
+    func test_codex_contributes_nothing_to_weekday_hour() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let log = """
+        {"type":"session_meta","payload":{"id":"abcd1234","cwd":"/x/q"}}
+        {"type":"turn_context","payload":{"model":"gpt-5.3-codex"}}
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":7}}}}
+        """
+        try log.write(to: root.appendingPathComponent("codex/2026/07/05/rollout-2026-07-05T09-00-00-abcd1234-x.jsonl"),
+                      atomically: true, encoding: .utf8)
+        let scan = reader(root).scanHistory(days: 30)
+        XCTAssertEqual(scan.weekdayHour.reduce(0, +), 0, "Codex has no per-turn hours → no heatmap contribution")
+        XCTAssertEqual(scan.days.first?.day, "2026-07-05")   // but it still appears in day rollups
+    }
+
+    func test_days_still_returned_alongside_grid() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "{\"timestamp\":\"2026-07-06T10:00:00.000Z\",\"cwd\":\"/x/p\",\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"usage\":{\"input_tokens\":10}}}"
+            .write(to: root.appendingPathComponent("claude/-Users-x-p/s.jsonl"), atomically: true, encoding: .utf8)
+        let scan = reader(root).scanHistory(days: 30)
+        XCTAssertEqual(scan.days.first { $0.day == "2026-07-06" }?.totalTokens, 10)
     }
 }

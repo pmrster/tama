@@ -1,8 +1,25 @@
 import Foundation
 
+/// One history scan's output: per-day rollups plus a Claude-only weekday×hour token grid.
+/// `weekdayHour` is ALWAYS 168 entries — index (weekday-1)*24 + hour, Calendar weekday
+/// 1=Sunday…7=Saturday — zero-filled, so consumers index without bounds checks.
+public struct UsageScan: Sendable, Equatable {
+    public let days: [DayUsage]
+    public let weekdayHour: [Int]
+    public init(days: [DayUsage], weekdayHour: [Int]) {
+        self.days = days
+        if weekdayHour.count == 168 { self.weekdayHour = weekdayHour }
+        else if weekdayHour.count > 168 { self.weekdayHour = Array(weekdayHour.prefix(168)) }
+        else { self.weekdayHour = weekdayHour + Array(repeating: 0, count: 168 - weekdayHour.count) }
+    }
+    /// No per-day usage found (the grid is zero-filled whenever `days` is empty). Kept so
+    /// existing `scanHistory(...).isEmpty` call sites (e.g. safety tests) read naturally.
+    public var isEmpty: Bool { days.isEmpty }
+}
+
 /// Something that can produce a per-day usage history (the reader, or a test mock).
 public protocol HistoryScanning: Sendable {
-    func scanHistory(days: Int) -> [DayUsage]
+    func scanHistory(days: Int) -> UsageScan
 }
 
 /// Read-only back-scan of Claude/Codex logs into per-day usage, for the Today/7d/30d view.
@@ -24,6 +41,7 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
         let project: String                    // folder basename — display only
         let model: String                      // "" = unknown → provider default pricing
         let byDay: [String: TokenBreakdown]    // day key → tokens
+        let hourly: [Int: Int]                 // (weekday-1)*24+hour → tokens; empty for Codex
     }
     private var cache: [String: Contribution] = [:]
 
@@ -42,7 +60,7 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
                   now: now, calendar: calendar)
     }
 
-    public func scanHistory(days: Int) -> [DayUsage] {
+    public func scanHistory(days: Int) -> UsageScan {
         let today = now()
         let startOfToday = calendar.startOfDay(for: today)
         let windowStart = calendar.date(byAdding: .day, value: -(days - 1), to: startOfToday) ?? startOfToday
@@ -58,6 +76,7 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
         // Aggregate per day, clamped to [startKey, todayKey] (drops buckets older than the
         // window inside still-recent files, and future-dated lines).
         var byDay: [String: DayUsage] = [:]
+        var grid = Array(repeating: 0, count: 168)
         for c in contributions {
             for (day, bd) in c.byDay where day >= startKey && day <= todayKey {
                 var d = byDay[day] ?? DayUsage(day: day)
@@ -65,8 +84,9 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
                 d.projects[c.provider, default: [:]][c.project] = (d.projects[c.provider]?[c.project] ?? TokenBreakdown()) + bd
                 byDay[day] = d
             }
+            for (cell, tok) in c.hourly where cell >= 0 && cell < 168 { grid[cell] += tok }
         }
-        return byDay.values.sorted { $0.day < $1.day }
+        return UsageScan(days: byDay.values.sorted { $0.day < $1.day }, weekdayHour: grid)
     }
 
     // MARK: Cached file parsing (same (mtime, size) pattern as ActiveSessionsReader)
@@ -82,7 +102,8 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
         }
         guard let parsed = parse(file) else { return nil }
         let entry = Contribution(mtime: mtime, size: size, provider: parsed.provider,
-                                 project: parsed.project, model: parsed.model, byDay: parsed.byDay)
+                                 project: parsed.project, model: parsed.model,
+                                 byDay: parsed.byDay, hourly: parsed.hourly)
         fresh[key] = entry
         return entry
     }
@@ -110,14 +131,19 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
     private func claudeContribution(_ file: URL) -> Contribution? {
         guard let p = LogFileParser.parseClaude(file) else { return nil }
         var byDay: [String: TokenBreakdown] = [:]
+        var hourly: [Int: Int] = [:]
         for (hour, bd) in p.buckets {
-            let day = UsageHistory.dayKey(Date(timeIntervalSince1970: TimeInterval(hour) * 3600),
-                                          calendar: calendar)
-            byDay[day] = (byDay[day] ?? TokenBreakdown()) + bd
+            let date = Date(timeIntervalSince1970: TimeInterval(hour) * 3600)
+            byDay[UsageHistory.dayKey(date, calendar: calendar)] = (byDay[UsageHistory.dayKey(date, calendar: calendar)] ?? TokenBreakdown()) + bd
+            let comps = calendar.dateComponents([.weekday, .hour], from: date)
+            if let w = comps.weekday, let h = comps.hour {
+                let cell = (w - 1) * 24 + h
+                hourly[cell, default: 0] += bd.total
+            }
         }
         return Contribution(mtime: .distantPast, size: 0, provider: .claudeCode,
                             project: URL(fileURLWithPath: p.folder).lastPathComponent,
-                            model: p.model ?? "", byDay: byDay)
+                            model: p.model ?? "", byDay: byDay, hourly: hourly)
     }
 
     private func scanCodex(days: Int, now: Date, into contributions: inout [Contribution],
@@ -149,6 +175,6 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
         guard total.total > 0 else { return nil }
         return Contribution(mtime: .distantPast, size: 0, provider: .codex,
                             project: URL(fileURLWithPath: p.folder).lastPathComponent,
-                            model: p.model ?? "", byDay: [dayKey: total])
+                            model: p.model ?? "", byDay: [dayKey: total], hourly: [:])
     }
 }

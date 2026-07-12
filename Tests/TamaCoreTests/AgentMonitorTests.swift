@@ -118,8 +118,9 @@ private final class HistoryStubReader: ActivityScanning, @unchecked Sendable {
 
 private final class HistoryStub: HistoryScanning, @unchecked Sendable {
     var days: [DayUsage] = []
+    var weekdayHour: [Int] = Array(repeating: 0, count: 168)
     private(set) var calls = 0
-    func scanHistory(days n: Int) -> [DayUsage] { calls += 1; return days }
+    func scanHistory(days n: Int) -> UsageScan { calls += 1; return UsageScan(days: days, weekdayHour: weekdayHour) }
 }
 
 @MainActor
