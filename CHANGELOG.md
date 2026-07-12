@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Usage section, round 2:** a 7×24 weekday×hour **activity heatmap** (Claude-only — Codex logs
+  carry no per-turn timestamps; last ~30 days, your local time, computed live and never persisted);
+  a **token-mix bar** showing fresh vs cache-read vs cache-write, exposing that cache re-reads
+  dominate the token count but cost ~0.1× input; **7d/30d spend delta** vs the prior equal window
+  (↑/↓%, hidden until there's enough history); and **click a histogram bar** to drill into a single
+  day's breakdown. All still read-only, local-only, no network.
+
+## 0.3.0 — 2026-07-12
+
 - New **Usage** section at the top of the dashboard: Today / 7d / 30d estimated cost + token
   tiles, expandable into a 30-day daily-cost histogram and per-model / per-provider /
   per-project breakdowns (Fable and every other priced tier appear per model). History is
