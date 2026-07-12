@@ -52,6 +52,7 @@ struct UsageSection: View {
                 if monitor.state.hourlyActivity.contains(where: { $0 > 0 }) {
                     UsageHeatmap(grid: monitor.state.hourlyActivity)
                 }
+                cacheBar(rollup(ui.usageWindowDays))
                 breakdownTables(rollup(ui.usageWindowDays))
             }
         }
@@ -99,6 +100,68 @@ struct UsageSection: View {
             }
         }
         .frame(height: 38)
+    }
+
+    /// Summed token breakdown across every provider/model in `d`.
+    private func summedBreakdown(_ d: DayUsage) -> TokenBreakdown {
+        d.models.values.flatMap { $0.values }.reduce(TokenBreakdown(), +)
+    }
+
+    /// Estimated cost of one composition segment, priced per provider/model then summed.
+    private func segmentCost(_ d: DayUsage, _ part: TokenComposition.Part) -> Double {
+        d.models.reduce(0.0) { acc, pm in
+            acc + pm.value.reduce(0.0) { inner, mb in
+                let m = mb.key.isEmpty ? nil : mb.key
+                let seg: TokenBreakdown
+                switch part {
+                case .fresh:      seg = TokenBreakdown(input: mb.value.input, output: mb.value.output)
+                case .cacheRead:  seg = TokenBreakdown(cacheRead: mb.value.cacheRead)
+                case .cacheWrite: seg = TokenBreakdown(cacheWrite: mb.value.cacheWrite, cacheWrite1h: mb.value.cacheWrite1h)
+                }
+                return inner + monitor.cost(seg, provider: pm.key, model: m)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cacheBar(_ d: DayUsage) -> some View {
+        let comp = TokenComposition(summedBreakdown(d))
+        if comp.total > 0 {
+            VStack(alignment: .leading, spacing: 3) {
+                sectionLabel("TOKEN MIX")
+                GeometryReader { geo in
+                    HStack(spacing: 1) {
+                        cacheSegment("fresh", Palette.green, comp.fraction(of: .fresh),
+                                     tokens: comp.fresh, cost: segmentCost(d, .fresh), width: geo.size.width)
+                        cacheSegment("cache rd", Palette.dim.opacity(0.55), comp.fraction(of: .cacheRead),
+                                     tokens: comp.cacheRead, cost: segmentCost(d, .cacheRead), width: geo.size.width)
+                        cacheSegment("cache wr", Palette.yellow.opacity(0.8), comp.fraction(of: .cacheWrite),
+                                     tokens: comp.cacheWrite, cost: segmentCost(d, .cacheWrite), width: geo.size.width)
+                    }
+                }
+                .frame(height: 14)
+                Text("cache re-reads dominate tokens but cost ~0.1× input — hover a segment")
+                    .font(.system(size: scaled(7.5))).foregroundStyle(Palette.dim.opacity(0.7))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cacheSegment(_ label: String, _ color: Color, _ frac: Double,
+                              tokens: Int, cost: Double, width: CGFloat) -> some View {
+        if frac > 0 {
+            let w = max(2, CGFloat(frac) * (width - 2))
+            RoundedRectangle(cornerRadius: 2).fill(color)
+                .frame(width: w)
+                .overlay(alignment: .leading) {
+                    if w > 34 {
+                        Text("\(Int((frac * 100).rounded()))%")
+                            .font(.system(size: scaled(7.5), weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Palette.panel).padding(.leading, 3)
+                    }
+                }
+                .help("\(label): \(formatTokens(tokens)) tok · \(cost > 0 ? formatCost(cost) : "~$0")")
+        }
     }
 
     @ViewBuilder
