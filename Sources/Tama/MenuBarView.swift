@@ -80,6 +80,9 @@ private enum MetricKind: Int, CaseIterable {
     @Published var usageExpanded = false
     /// Window the expanded usage tables cover: 1 (today), 7, or 30 days.
     @Published var usageWindowDays = 7
+    /// A day key ("yyyy-MM-dd") when the user has clicked a histogram bar to inspect one day;
+    /// nil = show the selected window rollup.
+    @Published var usageSelectedDay: String? = nil
 }
 
 private struct FolderGroup: Identifiable {

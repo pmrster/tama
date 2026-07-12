@@ -31,12 +31,29 @@ struct UsageSection: View {
     private var liveTodayTokens: Int { monitor.state.usage.values.reduce(0) { $0 + $1.todayTokens } }
     private var liveTodayCost: Double { monitor.state.usage.values.reduce(0) { $0 + $1.todayCost } }
 
+    /// The DayUsage the expanded tables / cache bar show: the drilled-down day if any, else the window.
+    private func displayed() -> DayUsage {
+        if let sel = ui.usageSelectedDay { return history.rollup(from: sel, through: sel) }
+        return rollup(ui.usageWindowDays)
+    }
+
+    /// Cost of the window ending `endDaysAgo` days back, spanning `days` days.
+    private func windowCost(days: Int, endingDaysAgo endDaysAgo: Int) -> Double {
+        cost(history.rollup(from: key(daysAgo: endDaysAgo + days - 1), through: key(daysAgo: endDaysAgo)))
+    }
+
+    /// Delta of the trailing `days`-window vs the immediately-prior `days`-window.
+    private func delta(days: Int) -> UsageDelta {
+        UsageDelta.compare(current: windowCost(days: days, endingDaysAgo: 0),
+                           prior: windowCost(days: days, endingDaysAgo: days))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 tile("TODAY", days: 1, cost: liveTodayCost, tokens: liveTodayTokens)
-                tile("7D", days: 7, cost: cost(rollup(7)), tokens: rollup(7).totalTokens)
-                tile("30D", days: 30, cost: cost(rollup(30)), tokens: rollup(30).totalTokens)
+                tile("7D", days: 7, cost: cost(rollup(7)), tokens: rollup(7).totalTokens, delta: delta(days: 7))
+                tile("30D", days: 30, cost: cost(rollup(30)), tokens: rollup(30).totalTokens, delta: delta(days: 30))
                 Spacer()
                 Button { ui.usageExpanded.toggle() } label: {
                     Image(systemName: ui.usageExpanded ? "chevron.up" : "chevron.down")
@@ -49,27 +66,49 @@ struct UsageSection: View {
             }
             if ui.usageExpanded {
                 histogram
+                drillHeader
                 if monitor.state.hourlyActivity.contains(where: { $0 > 0 }) {
                     UsageHeatmap(grid: monitor.state.hourlyActivity)
                 }
-                cacheBar(rollup(ui.usageWindowDays))
-                breakdownTables(rollup(ui.usageWindowDays))
+                cacheBar(displayed())
+                breakdownTables(displayed())
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
         .help(costCaveat)
     }
 
+    @ViewBuilder
+    private func deltaChip(_ d: UsageDelta) -> some View {
+        switch d {
+        case .up(let f):
+            Text("↑\(Int((f * 100).rounded()))%")
+                .font(.system(size: scaled(7.5), weight: .bold, design: .monospaced))
+                .foregroundStyle(Palette.coral)
+        case .down(let f):
+            Text("↓\(Int((f * 100).rounded()))%")
+                .font(.system(size: scaled(7.5), weight: .bold, design: .monospaced))
+                .foregroundStyle(Palette.green)
+        case .flat, .unavailable:
+            EmptyView()
+        }
+    }
+
     /// One stat tile; tapping selects the window the expanded tables cover.
-    private func tile(_ label: String, days: Int, cost: Double, tokens: Int) -> some View {
-        let selected = ui.usageWindowDays == days
+    private func tile(_ label: String, days: Int, cost: Double, tokens: Int,
+                      delta: UsageDelta = .unavailable) -> some View {
+        let selected = ui.usageWindowDays == days && ui.usageSelectedDay == nil
         return Button {
             ui.usageWindowDays = days
+            ui.usageSelectedDay = nil          // tapping a tile clears any drill-down
             if !ui.usageExpanded { ui.usageExpanded = true }
         } label: {
             VStack(alignment: .leading, spacing: 1) {
-                Text(label).font(.system(size: scaled(8), weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(selected ? Palette.yellow : Palette.dim)
+                HStack(spacing: 4) {
+                    Text(label).font(.system(size: scaled(8), weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(selected ? Palette.yellow : Palette.dim)
+                    deltaChip(delta)
+                }
                 Text(cost > 0 ? formatCost(cost) : "$0")
                     .font(.system(size: scaled(11), weight: .semibold, design: .monospaced))
                     .foregroundStyle(Palette.text)
@@ -86,20 +125,50 @@ struct UsageSection: View {
     }
 
     /// 30 bars, one per day, height = that day's estimated cost; today highlighted.
+    /// Each bar is a button that drills the expanded body down to that single day.
     private var histogram: some View {
         let keys = (0..<30).reversed().map { key(daysAgo: $0) }
         let costs = keys.map { cost(history.rollup(from: $0, through: $0)) }
         let maxCost = max(costs.max() ?? 0, 0.000001)
         return HStack(alignment: .bottom, spacing: 2) {
             ForEach(Array(zip(keys, costs)), id: \.0) { day, c in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(day == todayKey ? Palette.yellow : Palette.dim.opacity(0.4))
-                    .frame(height: max(2, CGFloat(c / maxCost) * 36))
-                    .frame(maxWidth: .infinity)
-                    .help("\(day): \(c > 0 ? formatCost(c) : "$0")")
+                Button { ui.usageSelectedDay = (ui.usageSelectedDay == day ? nil : day) } label: {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(ui.usageSelectedDay == day ? Palette.coral
+                              : (day == todayKey ? Palette.yellow : Palette.dim.opacity(0.4)))
+                        .frame(height: max(2, CGFloat(c / maxCost) * 36))
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                        .help("\(day): \(c > 0 ? formatCost(c) : "$0")")
+                }
+                .buttonStyle(.plain)
             }
         }
         .frame(height: 38)
+    }
+
+    @ViewBuilder
+    private var drillHeader: some View {
+        if let sel = ui.usageSelectedDay {
+            HStack(spacing: 5) {
+                Text(prettyDay(sel)).font(.system(size: scaled(9), weight: .bold, design: .monospaced))
+                    .foregroundStyle(Palette.coral)
+                Button { ui.usageSelectedDay = nil } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: scaled(9)))
+                        .foregroundStyle(Palette.dim)
+                }.buttonStyle(.plain).help("Back to the window view")
+            }
+        }
+    }
+
+    /// "yyyy-MM-dd" → "Fri Jul 11" (falls back to the raw key if it doesn't parse).
+    private func prettyDay(_ key: String) -> String {
+        let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone
+        f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: key) else { return key }
+        let out = DateFormatter(); out.calendar = cal; out.timeZone = cal.timeZone
+        out.dateFormat = "EEE MMM d"
+        return out.string(from: d)
     }
 
     /// Summed token breakdown across every provider/model in `d`.
