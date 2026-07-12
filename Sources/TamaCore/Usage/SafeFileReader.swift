@@ -24,6 +24,25 @@ enum SafeFileReader {
         return try? Data(contentsOf: url, options: .mappedIfSafe)
     }
 
+    /// Returns the last `maxBytes` of a file (or the whole file if smaller), keeping the same
+    /// symlink-reject / regular-file guards as `data`. Lets a reader inspect the recent tail of a
+    /// large, append-only log without reading — or rejecting — the entire file.
+    static func tail(at url: URL, maxBytes: Int = maxLogBytes) -> Data? {
+        guard maxBytes >= 0,
+              let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
+              values.isRegularFile == true,
+              values.isSymbolicLink != true,
+              let size = values.fileSize,
+              let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer { try? handle.close() }
+        let readLength = min(size, maxBytes)
+        let offset = size - readLength
+        if offset > 0 { try? handle.seek(toOffset: UInt64(offset)) }
+        return try? handle.read(upToCount: readLength)
+    }
+
     static func text(at url: URL, maxBytes: Int = maxLogBytes) -> String? {
         guard let data = data(at: url, maxBytes: maxBytes) else { return nil }
         return String(data: data, encoding: .utf8)

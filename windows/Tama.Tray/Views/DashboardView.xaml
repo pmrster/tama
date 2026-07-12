@@ -1,0 +1,514 @@
+<UserControl x:Class="Tama.Tray.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:Tama.Tray.Views"
+             xmlns:ui="clr-namespace:Tama.Core.Ui;assembly=Tama.Core"
+             Width="300">
+    <!-- WPF port of the DashboardView layout tree (planc-ui-spec.md §2): header / pet strip /
+         divider / tree / divider / ollama strip / TODAY bar / legend / divider / footer, at the
+         popover's hard fixed 300pt width (§1a). Every brush is an x:Static reference into
+         Palette (verbatim §2-Palette hexes) or comes back from a Converter that only ever returns
+         Palette brushes - this file contains no hex color of its own. -->
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- iconButton (§2a:794-801): plain 20x22 chrome-less button; whole frame hoverable so
+             tooltips fire. -->
+        <Style x:Key="PlainButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource PlainButton}">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="22" />
+        </Style>
+
+        <!-- FooterChip (§2g:937-968): idle dim-on-faint-panelEdge, hover text-on-panelEdge;
+             destructive variant hovers warn-on-warn-pill. -->
+        <Style x:Key="Chip" TargetType="Border">
+            <Setter Property="Background" Value="{x:Static views:Palette.PanelEdge60}" />
+            <Setter Property="TextElement.Foreground" Value="{x:Static views:Palette.Dim}" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{x:Static views:Palette.PanelEdge}" />
+                    <Setter Property="TextElement.Foreground" Value="{x:Static views:Palette.Text}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="DestructiveChip" TargetType="Border" BasedOn="{StaticResource Chip}">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{x:Static views:Palette.WarnPill}" />
+                    <Setter Property="TextElement.Foreground" Value="{x:Static views:Palette.Warn}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- §2b provider header row: chevron + 8x8 tint swatch + UPPERCASED name + "N proj · M active". -->
+        <DataTemplate DataType="{x:Type ui:ProviderRowVm}">
+            <Grid Margin="0,9,0,5" Background="Transparent" Cursor="Hand"
+                  MouseLeftButtonDown="ProviderRow_Click" ToolTip="{Binding ToggleTooltip}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Width="9" FontSize="8" FontWeight="Bold" VerticalAlignment="Center"
+                           Foreground="{x:Static views:Palette.Dim}"
+                           Text="{Binding Expanded, Converter={x:Static views:Converters.Chevron}}" />
+                <Border Grid.Column="1" Width="8" Height="8" CornerRadius="2" Margin="7,0,0,0"
+                        VerticalAlignment="Center"
+                        Background="{Binding Provider, Converter={x:Static views:Converters.ProviderTint}}" />
+                <TextBlock Grid.Column="2" Margin="7,0,8,0" FontSize="11" FontWeight="Heavy"
+                           VerticalAlignment="Center" Foreground="{x:Static views:Palette.Text}"
+                           TextTrimming="CharacterEllipsis" Text="{Binding DisplayNameUpper}" />
+                <TextBlock Grid.Column="3" FontFamily="Consolas" FontSize="9.5" VerticalAlignment="Center"
+                           Foreground="{x:Static views:Palette.Dim}" Text="{Binding StatsText}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- §2c folder (project) row: chevron + live dot + mono project name (tap = path reveal)
+             + "(N)" + metric + optional cost chip. -->
+        <DataTemplate DataType="{x:Type ui:FolderRowVm}">
+            <Grid Margin="13,0,0,2" Background="Transparent" Cursor="Hand"
+                  MouseLeftButtonDown="FolderRow_Click" ToolTip="{Binding ToggleTooltip}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Width="9" FontSize="8" FontWeight="Bold" VerticalAlignment="Center"
+                           Foreground="{x:Static views:Palette.Dim}"
+                           Text="{Binding Expanded, Converter={x:Static views:Converters.Chevron}}" />
+                <Ellipse Grid.Column="1" Width="6" Height="6" Margin="6,0,0,0" VerticalAlignment="Center">
+                    <Ellipse.Fill>
+                        <MultiBinding Converter="{x:Static views:Converters.LiveDot}" ConverterParameter="0.35">
+                            <Binding Path="Live" />
+                            <Binding Path="Provider" />
+                        </MultiBinding>
+                    </Ellipse.Fill>
+                </Ellipse>
+                <TextBlock Grid.Column="2" Margin="6,0,8,0" FontFamily="Consolas" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Background="Transparent"
+                           MouseLeftButtonDown="FolderProject_Click" ToolTip="{Binding RevealTooltip}"><Run FontSize="12" FontWeight="SemiBold" Foreground="{x:Static views:Palette.Text}" Text="{Binding Project, Mode=OneWay}" /><Run FontSize="9" Text=" " /><Run FontSize="9" Foreground="{x:Static views:Palette.Dim}" Text="{Binding CountText, Mode=OneWay}" /></TextBlock>
+                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <TextBlock FontFamily="Consolas" FontSize="10.5" VerticalAlignment="Center"
+                               Background="Transparent" Cursor="Hand" Text="{Binding MetricText}"
+                               MouseLeftButtonDown="FolderMetric_Click" ToolTip="{Binding MetricTooltip}">
+                        <TextBlock.Foreground>
+                            <MultiBinding Converter="{x:Static views:Converters.MetricBrush}">
+                                <Binding Path="MetricText" />
+                                <Binding Path="Provider" />
+                            </MultiBinding>
+                        </TextBlock.Foreground>
+                    </TextBlock>
+                    <TextBlock Margin="6,0,0,0" FontFamily="Consolas" FontSize="9" VerticalAlignment="Center"
+                               Foreground="{x:Static views:Palette.Dim}" Text="{Binding CostText}"
+                               ToolTip="{Binding CostTooltip}"
+                               Visibility="{Binding CostText, Converter={x:Static views:Converters.NullToVisible}}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- §2c revealed folder path row (mono, dim 0.8, middle-truncation approximated by tail). -->
+        <DataTemplate DataType="{x:Type ui:FolderPathRowVm}">
+            <TextBlock Margin="29,0,0,2" FontFamily="Consolas" FontSize="9.5"
+                       Foreground="{x:Static views:Palette.Dim80}" TextTrimming="CharacterEllipsis"
+                       Text="{Binding PrettyPath}" />
+        </DataTemplate>
+
+        <!-- §3c collapsed same-prompt group row: chevron + live dot + name + "xN" + badge + metric
+             + cost + relative time. -->
+        <DataTemplate DataType="{x:Type ui:SessionGroupRowVm}">
+            <Grid Margin="43,0,0,2" Background="Transparent" Cursor="Hand"
+                  MouseLeftButtonDown="GroupRow_Click" ToolTip="{Binding Tooltip}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Width="9" FontSize="8" FontWeight="Bold" VerticalAlignment="Center"
+                           Foreground="{x:Static views:Palette.Dim}"
+                           Text="{Binding Expanded, Converter={x:Static views:Converters.Chevron}}" />
+                <Ellipse Grid.Column="1" Width="5" Height="5" Margin="6,0,0,0" VerticalAlignment="Center">
+                    <Ellipse.Fill>
+                        <MultiBinding Converter="{x:Static views:Converters.LiveDot}" ConverterParameter="0.3">
+                            <Binding Path="Live" />
+                            <Binding Path="Provider" />
+                        </MultiBinding>
+                    </Ellipse.Fill>
+                </Ellipse>
+                <TextBlock Grid.Column="2" Margin="6,0,8,0" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"><Run FontSize="10.5" Foreground="{x:Static views:Palette.Text}" Text="{Binding Name, Mode=OneWay}" /><Run FontSize="9" Text=" " /><Run FontFamily="Consolas" FontSize="9" FontWeight="SemiBold" Foreground="{x:Static views:Palette.Dim}" Text="{Binding CountText, Mode=OneWay}" /></TextBlock>
+                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <Border CornerRadius="7" Padding="3,0.5" Margin="0,0,6,0" VerticalAlignment="Center"
+                            Background="{Binding Provider, Converter={x:Static views:Converters.ProviderTintPill}}"
+                            Visibility="{Binding ModelBadge, Converter={x:Static views:Converters.NullToVisible}}">
+                        <TextBlock FontFamily="Consolas" FontSize="8" FontWeight="SemiBold"
+                                   Foreground="{Binding Provider, Converter={x:Static views:Converters.ProviderTint}}"
+                                   Text="{Binding ModelBadge}" />
+                    </Border>
+                    <TextBlock FontFamily="Consolas" FontSize="10.5" VerticalAlignment="Center"
+                               Background="Transparent" Cursor="Hand" Text="{Binding MetricText}"
+                               MouseLeftButtonDown="GroupMetric_Click" ToolTip="{Binding MetricTooltip}">
+                        <TextBlock.Foreground>
+                            <MultiBinding Converter="{x:Static views:Converters.MetricBrush}">
+                                <Binding Path="MetricText" />
+                                <Binding Path="Provider" />
+                            </MultiBinding>
+                        </TextBlock.Foreground>
+                    </TextBlock>
+                    <TextBlock Margin="6,0,0,0" FontFamily="Consolas" FontSize="9" VerticalAlignment="Center"
+                               Foreground="{x:Static views:Palette.Dim}" Text="{Binding CostText}"
+                               Visibility="{Binding CostText, Converter={x:Static views:Converters.NullToVisible}}" />
+                    <TextBlock Width="30" Margin="6,0,0,0" FontFamily="Consolas" FontSize="9"
+                               VerticalAlignment="Center" TextAlignment="Right"
+                               Foreground="{x:Static views:Palette.Dim}" Text="{Binding RelativeTime}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- §3a session leaf: live dot + title/id + badge + ctx gauge (or plain metric) + cost
+             + relative time. Message bubble intentionally absent: popover-mode hides it (§3a). -->
+        <DataTemplate DataType="{x:Type ui:SessionLeafRowVm}">
+            <Grid Margin="{Binding Nested, Converter={x:Static views:Converters.LeafIndent}}"
+                  Background="Transparent">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Ellipse Width="5" Height="5" VerticalAlignment="Center">
+                    <Ellipse.Fill>
+                        <MultiBinding Converter="{x:Static views:Converters.LiveDot}" ConverterParameter="0.3">
+                            <Binding Path="Live" />
+                            <Binding Path="Provider" />
+                        </MultiBinding>
+                    </Ellipse.Fill>
+                </Ellipse>
+                <TextBlock Grid.Column="1" Margin="5,0,8,0" FontSize="10.5" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Text="{Binding Name}" ToolTip="{Binding Tooltip}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{x:Static views:Palette.Text}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding AsId}" Value="True">
+                                    <Setter Property="Foreground" Value="{x:Static views:Palette.Dim}" />
+                                    <Setter Property="FontFamily" Value="Consolas" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Border CornerRadius="7" Padding="3,0.5" Margin="0,0,5,0" VerticalAlignment="Center"
+                            Background="{Binding Provider, Converter={x:Static views:Converters.ProviderTintPill}}"
+                            Visibility="{Binding ModelBadge, Converter={x:Static views:Converters.NullToVisible}}">
+                        <TextBlock FontFamily="Consolas" FontSize="8" FontWeight="SemiBold"
+                                   Foreground="{Binding Provider, Converter={x:Static views:Converters.ProviderTint}}"
+                                   Text="{Binding ModelBadge}" />
+                    </Border>
+                    <!-- sessionMetric (§3a/§3b): the tappable two-numbers display - 18x4 capsule
+                         track + fill (only when a context fraction exists) + the number. -->
+                    <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
+                                MouseLeftButtonDown="LeafMetric_Click" ToolTip="{Binding MetricTooltip}">
+                        <Grid Width="18" Height="4" Margin="0,0,3,0" VerticalAlignment="Center"
+                              Visibility="{Binding ContextFraction, Converter={x:Static views:Converters.NullToVisible}}">
+                            <Border CornerRadius="2" Background="{x:Static views:Palette.Track}" />
+                            <Border CornerRadius="2" Height="4" HorizontalAlignment="Left"
+                                    Width="{Binding ContextFraction, Converter={x:Static views:Converters.GaugeWidth}, ConverterParameter=18}">
+                                <Border.Background>
+                                    <MultiBinding Converter="{x:Static views:Converters.WarnTint}">
+                                        <Binding Path="ContextWarn" />
+                                        <Binding Path="Provider" />
+                                    </MultiBinding>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                        <TextBlock FontFamily="Consolas" FontSize="10.5" VerticalAlignment="Center"
+                                   Text="{Binding MetricText}">
+                            <TextBlock.Foreground>
+                                <MultiBinding Converter="{x:Static views:Converters.MetricBrush}">
+                                    <Binding Path="MetricText" />
+                                    <Binding Path="Provider" />
+                                    <Binding Path="ContextWarn" />
+                                </MultiBinding>
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Margin="5,0,0,0" FontFamily="Consolas" FontSize="9" VerticalAlignment="Center"
+                               Foreground="{x:Static views:Palette.Dim}" Text="{Binding CostText}"
+                               ToolTip="{Binding CostTooltip}"
+                               Visibility="{Binding CostText, Converter={x:Static views:Converters.NullToVisible}}" />
+                    <TextBlock Width="30" Margin="5,0,0,0" FontFamily="Consolas" FontSize="9"
+                               VerticalAlignment="Center" TextAlignment="Right"
+                               Foreground="{x:Static views:Palette.Dim}" Text="{Binding RelativeTime}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- §4 Ollama per-model row: status dot + model tag + conditional 16x4 gauge + metrics. -->
+        <DataTemplate DataType="{x:Type ui:OllamaModelRowVm}">
+            <Grid Margin="14,0,0,2" Background="Transparent" ToolTip="{Binding Tooltip}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Ellipse Width="5" Height="5" VerticalAlignment="Center"
+                         Fill="{Binding Dot, Converter={x:Static views:Converters.OllamaDot}}" />
+                <TextBlock Grid.Column="1" Margin="5,0,0,0" FontFamily="Consolas" FontSize="10.5"
+                           VerticalAlignment="Center" Foreground="{x:Static views:Palette.Text}"
+                           TextTrimming="CharacterEllipsis" Text="{Binding Model}" />
+                <Grid Grid.Column="2" Width="16" Height="4" Margin="5,0,0,0" VerticalAlignment="Center"
+                      Visibility="{Binding ContextFraction, Converter={x:Static views:Converters.NullToVisible}}">
+                    <Border CornerRadius="2" Background="{x:Static views:Palette.Track}" />
+                    <Border CornerRadius="2" Height="4" HorizontalAlignment="Left"
+                            Width="{Binding ContextFraction, Converter={x:Static views:Converters.GaugeWidth}, ConverterParameter=16}">
+                        <Border.Background>
+                            <MultiBinding Converter="{x:Static views:Converters.OllamaGaugeBrush}">
+                                <Binding Path="ContextWarn" />
+                                <Binding Path="Dot" />
+                            </MultiBinding>
+                        </Border.Background>
+                    </Border>
+                </Grid>
+                <TextBlock Grid.Column="4" Margin="4,0,0,0" FontFamily="Consolas" FontSize="9"
+                           VerticalAlignment="Center" Foreground="{x:Static views:Palette.Dim}"
+                           Text="{Binding MetricsText}" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <!-- Root is a Grid (not a StackPanel) so the tree row can be given Height="*" (row index 3
+         below): under the popover's SizeToContent="Height", WPF measures Star rows as Auto (no
+         behavior change there — see DashboardView.xaml.cs's SetFixedWidth doc comment), but under
+         the pinned window's real fixed-size viewport a Star row genuinely grows to fill leftover
+         vertical space once the ScrollViewer's own Height binding is cleared — the WPF analog of
+         mac's `tree`'s `.frame(maxHeight: .infinity)` in pinned mode (spec §2). Every child below
+         keeps its exact original content; only Grid.Row indices were added. -->
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ==== header (§2a) ==== -->
+        <Grid Grid.Row="0" Margin="14,11">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="7" Height="7" Margin="0,0,8,0" VerticalAlignment="Center"
+                         Fill="{Binding ActiveNow, Converter={x:Static views:Converters.PositiveCountAccent}}" />
+                <TextBlock VerticalAlignment="Center"><Run FontSize="14" FontWeight="Bold" Foreground="{x:Static views:Palette.Text}" Text="{Binding ActiveNow, Mode=OneWay, StringFormat='{}{0} '}" /><Run FontSize="13" Foreground="{x:Static views:Palette.Dim}" Text="{Binding AgentsWord, Mode=OneWay}" /></TextBlock>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <!-- metric-cycle: icon + current MetricKind label (§2a). Segoe MDL2 Assets glyphs
+                     stand in for SF Symbols throughout (spec §7 note 10). -->
+                <Button Style="{StaticResource PlainButton}" Height="22" Padding="3,0"
+                        Click="MetricCycle_Click" ToolTip="{Binding MetricCycleTooltip}">
+                    <StackPanel Orientation="Horizontal" Margin="3,0">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{x:Static views:Palette.Dim}" Text="&#xE895;" />
+                        <TextBlock Margin="2,0,0,0" FontFamily="Consolas" FontSize="9" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Foreground="{x:Static views:Palette.Dim}"
+                                   Text="{Binding DefaultMetricLabel}" />
+                    </StackPanel>
+                </Button>
+                <!-- active-only filter: bolt fills yellow on a faint pill when on (§2a). -->
+                <Button Style="{StaticResource IconButton}" Margin="2,0,0,0"
+                        Click="ActiveOnly_Click" ToolTip="{Binding ActiveOnlyTooltip}">
+                    <Border Width="20" Height="22" CornerRadius="5"
+                            Background="{Binding ActiveOnly, Converter={x:Static views:Converters.BoolAccentPill}}">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Text="&#xE945;"
+                                   Foreground="{Binding ActiveOnly, Converter={x:Static views:Converters.BoolAccent}}" />
+                    </Border>
+                </Button>
+                <Button Style="{StaticResource IconButton}" Margin="2,0,0,0"
+                        Click="ExpandCollapseAll_Click" ToolTip="{Binding ExpandCollapseAllTooltip}">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11"
+                               Foreground="{x:Static views:Palette.Dim}"
+                               Text="{Binding AnyFolderExpanded, Converter={x:Static views:Converters.ExpandGlyph}}" />
+                </Button>
+                <!-- pin: toggles the resizable pinned window (spec §1a/§1b); showing it steals
+                     focus from a currently-open transient popover, which then self-closes via its
+                     own Deactivated handler (PopoverWindow.xaml.cs) — no explicit coordination
+                     needed, mirroring mac's PinnedPanel.toggle() call site. -->
+                <Button Style="{StaticResource IconButton}" Margin="2,0,0,0"
+                        Click="Pin_Click" ToolTip="{x:Static ui:DashboardViewModel.PinTooltip}">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11"
+                               Foreground="{x:Static views:Palette.Dim}" Text="&#xE718;" />
+                </Button>
+                <Button Style="{StaticResource IconButton}" Margin="2,0,0,0"
+                        Click="Refresh_Click" ToolTip="{x:Static ui:DashboardViewModel.RefreshTooltip}">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11"
+                               Foreground="{x:Static views:Palette.Dim}" Text="&#xE72C;" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- ==== pixel-cat strip (§2 layout tree: PetView, height 34, h-padding 14, top 2 bottom 6) ==== -->
+        <views:PetControl Grid.Row="1" x:Name="Pet" Margin="14,2,14,6" />
+
+        <Border Grid.Row="2" Height="1" Background="{x:Static views:Palette.PanelEdge}" />
+
+        <!-- ==== tree (§2b/§2c/§3): explicit listHeight+22 so the size-to-content popover never
+             collapses the scroll area (§2 formula; spec §7 note 5). In pinned mode (fixedWidth:
+             false) DashboardView.xaml.cs clears this Height local value so the ScrollViewer instead
+             fills the Grid's Star-sized row 3 (spec §2: pinned tree gets maxHeight: .infinity). ==== -->
+        <ScrollViewer Grid.Row="3" x:Name="TreeScroll" Height="{Binding PopoverListHeight}"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="12,2,12,11">
+                <TextBlock FontSize="11" Foreground="{x:Static views:Palette.Dim}" Margin="0,8"
+                           HorizontalAlignment="Center" Text="{Binding EmptyStateText}"
+                           Visibility="{Binding IsTreeEmpty, Converter={StaticResource BoolToVis}}" />
+                <ItemsControl ItemsSource="{Binding TreeRows}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="4" Height="1" Background="{x:Static views:Palette.PanelEdge}" />
+
+        <!-- ==== ollama strip (§4): entirely absent - including its own trailing divider - unless
+             a local server process is detected. ==== -->
+        <StackPanel Grid.Row="5" Visibility="{Binding OllamaVisible, Converter={StaticResource BoolToVis}}">
+            <StackPanel Margin="12,7">
+                <Grid Background="Transparent" Cursor="Hand" MouseLeftButtonDown="OllamaHeader_Click">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="OllamaChevron" Width="8" FontSize="8" FontWeight="Bold"
+                               VerticalAlignment="Center" Foreground="{x:Static views:Palette.Dim}"
+                               Text="&#x25BE;" />
+                    <Ellipse Grid.Column="1" Width="6" Height="6" Margin="6,0,0,0" VerticalAlignment="Center"
+                             Fill="{Binding OllamaBusy, Converter={x:Static views:Converters.BoolAccent}}" />
+                    <TextBlock Grid.Column="2" Margin="6,0,4,0" FontSize="11" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Foreground="{x:Static views:Palette.Text}"
+                               Text="Ollama" />
+                    <TextBlock Grid.Column="3" FontFamily="Consolas" FontSize="9.5" VerticalAlignment="Center"
+                               Foreground="{x:Static views:Palette.Dim}" Text="{Binding OllamaCountLabel}" />
+                </Grid>
+                <StackPanel x:Name="OllamaBody" Margin="0,5,0,0">
+                    <TextBlock Margin="14,0,0,0" FontFamily="Consolas" FontSize="9.5"
+                               Foreground="{x:Static views:Palette.Dim}" Text="{Binding OllamaEmptyText}"
+                               Visibility="{Binding OllamaEmptyText, Converter={x:Static views:Converters.NullToVisible}}" />
+                    <ItemsControl ItemsSource="{Binding OllamaModels}" />
+                </StackPanel>
+            </StackPanel>
+            <Border Height="1" Background="{x:Static views:Palette.PanelEdge}" />
+        </StackPanel>
+
+        <!-- ==== TODAY / LAST 24H bar (§2f): window toggle + (?) info + hardcoded CC / CX chips. ==== -->
+        <Grid Grid.Row="6" Margin="14,8" Background="Transparent" ToolTip="{Binding TodayTooltip}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
+                        MouseLeftButtonDown="WindowToggle_Click" ToolTip="{Binding WindowToggleTooltip}">
+                <TextBlock FontSize="9" FontWeight="Heavy" VerticalAlignment="Center"
+                           Foreground="{x:Static views:Palette.Dim}" Text="{Binding WindowLabel}" />
+                <TextBlock Margin="3,0,0,0" FontFamily="Segoe MDL2 Assets" FontSize="7" FontWeight="Bold"
+                           VerticalAlignment="Center" Foreground="{x:Static views:Palette.Dim55}"
+                           Text="&#xE8AB;" />
+            </StackPanel>
+            <Button x:Name="InfoBtn" Grid.Column="1" Style="{StaticResource PlainButton}" Width="16" Height="16"
+                    Margin="4,0,0,0" Click="InfoButton_Click"
+                    ToolTip="{x:Static ui:DashboardViewModel.InfoButtonTooltip}">
+                <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="9.5" FontWeight="SemiBold"
+                           Foreground="{x:Static views:Palette.Dim70}" Text="&#xE9CE;" />
+            </Button>
+            <Popup x:Name="InfoPopup" PlacementTarget="{Binding ElementName=InfoBtn}" Placement="Bottom"
+                   StaysOpen="False" AllowsTransparency="True">
+                <Border Width="288" Padding="12" Background="{x:Static views:Palette.Panel}"
+                        BorderBrush="{x:Static views:Palette.PanelEdge}" BorderThickness="1" CornerRadius="6">
+                    <StackPanel>
+                        <TextBlock x:Name="InfoTitle" FontSize="11" FontWeight="Bold" Margin="0,0,0,8"
+                                   Foreground="{x:Static views:Palette.Text}" />
+                        <StackPanel x:Name="InfoRowsPanel" />
+                    </StackPanel>
+                </Border>
+            </Popup>
+            <TextBlock Grid.Column="3" FontFamily="Consolas" VerticalAlignment="Center"><Run FontSize="11" Foreground="{x:Static views:Palette.Coral}" Text="CC " /><Run FontSize="11" FontWeight="SemiBold" Foreground="{x:Static views:Palette.Text}" Text="{Binding CcTokensText, Mode=OneWay}" /><Run FontSize="9.5" Foreground="{x:Static views:Palette.Dim}" Text="{Binding CcCostText, Mode=OneWay}" /><Run FontSize="11" Text="   " /><Run FontSize="11" Foreground="{x:Static views:Palette.Green}" Text="CX " /><Run FontSize="11" FontWeight="SemiBold" Foreground="{x:Static views:Palette.Text}" Text="{Binding CxTokensText, Mode=OneWay}" /><Run FontSize="9.5" Foreground="{x:Static views:Palette.Dim}" Text="{Binding CxCostText, Mode=OneWay}" /></TextBlock>
+        </Grid>
+
+        <!-- ==== legend (§2e): inlines built in code-behind from DashboardViewModel.LegendPieces. ==== -->
+        <TextBlock Grid.Row="7" x:Name="LegendText" Margin="14,2,14,6" FontFamily="Consolas" FontSize="8.5"
+                   TextWrapping="Wrap" />
+
+        <Border Grid.Row="8" Height="1" Background="{x:Static views:Palette.PanelEdge}" />
+
+        <!-- ==== footer (§2g): launch-at-login checkbox + About / Quit chips. ==== -->
+        <Grid Grid.Row="9" Margin="14,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <!-- launch-at-login: reads/writes through DashboardViewModel.LaunchAtLoginEnabled /
+                 ToggleLaunchAtLogin(), backed by the injected IRunAtLogin (Tama.Tray.RunAtLogin's
+                 HKCU Run-key write on Windows; task-6-brief.md). -->
+            <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
+                        MouseLeftButtonDown="LaunchAtLogin_Click"
+                        ToolTip="{x:Static ui:DashboardViewModel.LaunchAtLoginTooltip}">
+                <TextBlock x:Name="LaunchAtLoginIcon" FontSize="11" VerticalAlignment="Center" />
+                <TextBlock Margin="6,0,0,0" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{x:Static views:Palette.Text}" Text="Launch at login" />
+            </StackPanel>
+            <Border Grid.Column="2" Style="{StaticResource Chip}" MouseLeftButtonDown="About_Click"
+                    ToolTip="{x:Static ui:DashboardViewModel.AboutTooltip}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="9.5" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Text="&#xE946;" />
+                    <TextBlock Margin="4,0,0,0" FontSize="11" FontWeight="Medium" VerticalAlignment="Center"
+                               Text="About" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Style="{StaticResource DestructiveChip}" Margin="6,0,0,0"
+                    MouseLeftButtonDown="Quit_Click" ToolTip="{x:Static ui:DashboardViewModel.QuitTooltip}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="9.5" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Text="&#xE7E8;" />
+                    <TextBlock Margin="4,0,0,0" FontSize="11" FontWeight="Medium" VerticalAlignment="Center"
+                               Text="Quit" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

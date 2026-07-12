@@ -17,6 +17,7 @@ docs/
 state/
 
 *.log
+!spec/fixtures/**/*.log
 *.tmp
 *.swp
 *.swo
@@ -50,3 +51,10 @@ Packaging/icon-1024.png
 # (Still produced by `--readme-shots`; just never committed.)
 assets/cat-light.png
 assets/cat-dark.png
+
+# Claude Code local worktrees
+.claude/worktrees/
+
+windows/**/bin/
+windows/**/obj/
+*.user

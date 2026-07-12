@@ -5,25 +5,44 @@ public protocol ProcessScanning: Sendable {
     func scan() -> [ProcInfo]
 }
 
+/// A cheap, targeted presence query: returns full info only for processes named `ollama`.
+/// Separate from `scan()` so callers needing only Ollama presence avoid the ~600ms cost of
+/// reading argv for every process on the system on each poll.
+public protocol OllamaPresenceScanning: Sendable {
+    func ollamaProcesses() -> [ProcInfo]
+}
+
 /// Enumerates same-user processes via sysctl (read-only kernel query). Never spawns or writes.
-public struct SysctlProcessScanner: ProcessScanning {
+public struct SysctlProcessScanner: ProcessScanning, OllamaPresenceScanning {
     public init() {}
     private static let argMax = readArgMax()
 
     public func scan() -> [ProcInfo] {
+        kinfoProcs().compactMap { procInfo($0) }
+    }
+
+    /// Only the `ollama` processes, with argv read for those few alone (the comm filter comes from
+    /// the single bulk sysctl, so the expensive per-process argv read runs ~1-3 times, not ~900).
+    public func ollamaProcesses() -> [ProcInfo] {
         kinfoProcs().compactMap { info in
-            let pid = info.kp_proc.p_pid
-            guard pid > 0 else { return nil }
-            let ppid = info.kp_eproc.e_ppid
-            var comm = info.kp_proc.p_comm
-            let commName = withUnsafePointer(to: &comm) {
-                $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXCOMLEN) + 1) { String(cString: $0) }
-            }
-            let hasTTY = info.kp_eproc.e_tdev != -1   // -1 == NODEV, no controlling terminal
-            return ProcInfo(pid: pid, ppid: ppid,
-                            execPath: processPath(pid: pid),
-                            argv: processArgs(pid: pid),
-                            cwd: nil, hasTTY: hasTTY, commName: commName)
+            commName(info) == "ollama" ? procInfo(info) : nil
+        }
+    }
+
+    private func procInfo(_ info: kinfo_proc) -> ProcInfo? {
+        let pid = info.kp_proc.p_pid
+        guard pid > 0 else { return nil }
+        let hasTTY = info.kp_eproc.e_tdev != -1   // -1 == NODEV, no controlling terminal
+        return ProcInfo(pid: pid, ppid: info.kp_eproc.e_ppid,
+                        execPath: processPath(pid: pid),
+                        argv: processArgs(pid: pid),
+                        cwd: nil, hasTTY: hasTTY, commName: commName(info))
+    }
+
+    private func commName(_ info: kinfo_proc) -> String {
+        var comm = info.kp_proc.p_comm
+        return withUnsafePointer(to: &comm) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXCOMLEN) + 1) { String(cString: $0) }
         }
     }
 

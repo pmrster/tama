@@ -14,10 +14,27 @@ final class AppSettings: ObservableObject {
     @Published var appearance: Appearance { didSet { store.appearance = appearance; applyAppearance() } }
     @Published var fontSize: FontSize     { didSet { store.fontSize = fontSize } }
 
+    /// Off by default; flipping either toggle on requests notification permission (once —
+    /// `UNUserNotificationCenter` no-ops on repeat requests once a decision has been made).
+    @Published var notifyAgentQuiet: Bool {
+        didSet {
+            store.notifyAgentQuiet = notifyAgentQuiet
+            if notifyAgentQuiet { Notifier.shared.requestAuthorization() }
+        }
+    }
+    @Published var notifyContextHigh: Bool {
+        didSet {
+            store.notifyContextHigh = notifyContextHigh
+            if notifyContextHigh { Notifier.shared.requestAuthorization() }
+        }
+    }
+
     init(store: SettingsStore = SettingsStore()) {
         self.store = store
         self.appearance = store.appearance
         self.fontSize = store.fontSize
+        self.notifyAgentQuiet = store.notifyAgentQuiet
+        self.notifyContextHigh = store.notifyContextHigh
     }
 
     /// nil = follow the OS; otherwise force light/dark. Used by SwiftUI previews/snapshots.

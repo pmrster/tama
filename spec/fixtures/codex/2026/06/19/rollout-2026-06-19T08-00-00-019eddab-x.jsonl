@@ -1,0 +1,6 @@
+{"timestamp":"2026-06-19T08:00:00.000Z","type":"session_meta","payload":{"id":"019eddab-ffff-4000-8000-000000000000","cwd":"/Example/Code/widget"}}
+{"timestamp":"2026-06-19T08:00:30.000Z","type":"event_msg","payload":{"type":"user_message","message":"<environment_context>stuff</environment_context>\n## My request for Codex:\nadd dark mode toggle"}}
+{"timestamp":"2026-06-19T08:01:00.000Z","type":"turn_context","payload":{"cwd":"/Example/Code/widget","model":"gpt-5-codex"}}
+{"timestamp":"2026-06-19T08:02:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"add dark mode toggle"}]}}
+{"timestamp":"2026-06-19T08:03:00.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}}
+{"timestamp":"2026-06-19T08:05:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":15586,"cached_input_tokens":4992,"output_tokens":330,"total_tokens":15916},"last_token_usage":{"input_tokens":8000,"cached_input_tokens":2000,"output_tokens":120,"total_tokens":8120},"model_context_window":272000}}}

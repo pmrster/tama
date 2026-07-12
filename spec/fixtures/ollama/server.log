@@ -1,0 +1,13 @@
+time=2026-06-22T18:36:56.556+07:00 level=INFO source=client.go:367 msg="starting mlx runner subprocess" model=qwen3.6:27b-mlx port=100
+slot update_slots: id  0 | task 5 | new prompt, n_ctx_slot = 32768, n_keep = 4, task.n_tokens = 2000
+slot launch_slot_: id  0 | task 5 | processing task, is_child = 0
+slot print_timing: id  0 | task 5 | n_decoded =    100, tg =  50.0 t/s
+[GIN] 2026/06/22 - 19:00:00 | 200 |   5.0s |       127.0.0.1 | POST     "/api/generate"
+srv  update_slots: all slots are idle
+time=2026-06-22T19:29:32.938+07:00 level=INFO source=client.go:126 msg="stopping mlx runner subprocess" pid=999
+time=2026-06-22T19:29:40.000+07:00 level=INFO source=client.go:367 msg="starting mlx runner subprocess" model=gemma4:12b-mlx port=101
+slot update_slots: id  0 | task 6 | new prompt, n_ctx_slot = 8192, n_keep = 4, task.n_tokens = 500
+slot launch_slot_: id  0 | task 6 | processing task, is_child = 0
+slot print_timing: id  0 | task 6 | n_decoded =    100, tg =  80.0 t/s
+[GIN] 2026/06/22 - 19:30:00 | 200 |   2.0s |       127.0.0.1 | POST     "/api/chat"
+[GIN] 2026/06/22 - 19:30:05 | 200 |   200ms |       127.0.0.1 | POST     "/api/chat"

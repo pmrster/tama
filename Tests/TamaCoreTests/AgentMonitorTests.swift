@@ -81,4 +81,149 @@ final class AgentMonitorTests: XCTestCase {
         }
         wait(for: [exp], timeout: 2)
     }
+
+    func test_refresh_publishes_working_mood_for_active_session() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let session = SessionInfo(provider: .claudeCode, project: "tama-widget",
+                                  folder: "/code/tama-widget",
+                                  lastActivity: now.addingTimeInterval(-60))
+        let scanner = MoodMonitorStubScanner(activity: Activity(sessions: [session], totals: [:]))
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentMonitorMood-\(UUID().uuidString)", isDirectory: true)
+        // Pre-seed lastSeenDay = now so greeting doesn't fire; we want to test working state.
+        let store = CatStateStore(directory: tmp)
+        store.save(CatState(lastSeenDay: now))
+        let monitor = AgentMonitor(reader: scanner, now: { now }, runsInBackground: false,
+                                   catStateStore: store)
+        monitor.refresh()
+        XCTAssertEqual(monitor.state.mood, .working(intensity: 1))
+        try? FileManager.default.removeItem(at: tmp)
+    }
+}
+
+/// Minimal `ActivityScanning` stub that returns a fixed `Activity`. A struct (not a class)
+/// because `ActivityScanning: Sendable` — a value type with a `Sendable` `Activity` is
+/// `Sendable` automatically; a class would need `@unchecked Sendable`.
+private struct MoodMonitorStubScanner: ActivityScanning {
+    let activity: Activity
+    func scan() -> Activity { activity }
+}
+
+// MARK: - Usage history wiring
+
+private final class HistoryStubReader: ActivityScanning, @unchecked Sendable {
+    var activity = Activity.empty
+    func scan() -> Activity { activity }
+}
+
+private final class HistoryStub: HistoryScanning, @unchecked Sendable {
+    var days: [DayUsage] = []
+    var weekdayHour: [Int] = Array(repeating: 0, count: 168)
+    private(set) var calls = 0
+    func scanHistory(days n: Int) -> UsageScan { calls += 1; return UsageScan(days: days, weekdayHour: weekdayHour) }
+}
+
+@MainActor
+final class AgentMonitorHistoryTests: XCTestCase {
+    private var utc: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+    private let t0 = ISO8601DateFormatter.shared.date(from: "2026-07-07T10:00:00.000Z")!
+
+    private func makeMonitor(now: @escaping () -> Date, history: HistoryStub) -> AgentMonitor {
+        AgentMonitor(reader: HistoryStubReader(), now: now, runsInBackground: false,
+                     catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                        .appendingPathComponent("mon-\(UUID().uuidString)")),
+                     historyReader: history, calendar: utc)
+    }
+
+    func test_history_scan_runs_once_then_waits_for_the_interval() {
+        var now = t0
+        let stub = HistoryStub()
+        stub.days = [DayUsage(day: "2026-07-06",
+                              models: [.claudeCode: ["opus": TokenBreakdown(input: 5)]])]
+        let m = makeMonitor(now: { now }, history: stub)
+        m.refresh()
+        XCTAssertEqual(stub.calls, 1)
+        XCTAssertTrue(m.state.history.contains { $0.day == "2026-07-06" })
+        m.refresh()                                   // same instant — not due again
+        XCTAssertEqual(stub.calls, 1)
+        now = t0.addingTimeInterval(3601)             // past the hourly interval
+        m.refresh()
+        XCTAssertEqual(stub.calls, 2)
+    }
+
+    func test_day_rollover_triggers_rescan_before_the_interval() {
+        var now = ISO8601DateFormatter.shared.date(from: "2026-07-07T23:59:00.000Z")!
+        let stub = HistoryStub()
+        let m = makeMonitor(now: { now }, history: stub)
+        m.refresh()
+        XCTAssertEqual(stub.calls, 1)
+        now = now.addingTimeInterval(120)             // 00:01 next day — only 2 min later
+        m.refresh()
+        XCTAssertEqual(stub.calls, 2)
+    }
+
+    func test_published_history_always_carries_live_today_entry() {
+        let stub = HistoryStub()
+        stub.days = [DayUsage(day: "2026-07-06")]
+        let m = makeMonitor(now: { self.t0 }, history: stub)
+        m.refresh()
+        XCTAssertEqual(m.state.history.last?.day, "2026-07-07")   // live today appended
+    }
+
+    func test_no_history_reader_publishes_empty_history() {
+        let m = AgentMonitor(reader: HistoryStubReader(), now: { self.t0 }, runsInBackground: false,
+                             catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mon-\(UUID().uuidString)")),
+                             calendar: utc)
+        m.refresh()
+        XCTAssertEqual(m.state.history, [])
+    }
+
+    func test_monitor_forwards_policy_events_to_callback() {
+        var now = t0
+        let reader = HistoryStubReader()
+        let live = SessionInfo(provider: .claudeCode, project: "tama", folder: "/x/tama",
+                               lastActivity: t0, sessionId: "s1")
+        reader.activity = Activity(sessions: [live], totals: [:])
+        let m = AgentMonitor(reader: reader, now: { now }, runsInBackground: false,
+                             catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mon-\(UUID().uuidString)")),
+                             calendar: utc)
+        var received: [NotificationEvent] = []
+        m.onNotifications = { received += $0 }
+        m.refresh()                                   // observes streaming
+        XCTAssertTrue(received.isEmpty)
+        now = t0.addingTimeInterval(240)              // 4 min quiet
+        m.refresh()
+        XCTAssertEqual(received.map(\.kind), [.agentQuiet])
+    }
+
+    func test_publishes_hourly_activity_from_scan_and_retains_between_scans() {
+        var now = t0
+        let stub = HistoryStub()
+        var grid = Array(repeating: 0, count: 168)
+        grid[34] = 999
+        stub.weekdayHour = grid
+        let m = makeMonitor(now: { now }, history: stub)
+        m.refresh()
+        XCTAssertEqual(m.state.hourlyActivity.count, 168)
+        XCTAssertEqual(m.state.hourlyActivity[34], 999)
+        // A poll where history is NOT due keeps the last grid (doesn't blank it).
+        now = t0.addingTimeInterval(5)
+        m.refresh()
+        XCTAssertEqual(m.state.hourlyActivity[34], 999)
+    }
+
+    func test_no_history_reader_publishes_empty_hourly_activity() {
+        let m = AgentMonitor(reader: HistoryStubReader(), now: { self.t0 }, runsInBackground: false,
+                             catStateStore: CatStateStore(directory: FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mon-\(UUID().uuidString)")),
+                             calendar: utc)
+        m.refresh()
+        XCTAssertEqual(m.state.hourlyActivity, [])
+    }
 }

@@ -30,6 +30,22 @@ struct SettingsView: View {
                 .pickerStyle(.segmented).labelsHidden()
             }
 
+            section("NOTIFICATIONS") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(isOn: $settings.notifyAgentQuiet) {
+                        Text("Alert when an agent goes quiet (may be waiting for input)")
+                            .font(.system(size: scaled(12)))
+                            .foregroundStyle(Palette.text)
+                    }
+                    Toggle(isOn: $settings.notifyContextHigh) {
+                        Text("Warn when a session's context is nearly full (85%)")
+                            .font(.system(size: scaled(12)))
+                            .foregroundStyle(Palette.text)
+                    }
+                }
+                .toggleStyle(.switch)
+            }
+
             section("PREVIEW") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {

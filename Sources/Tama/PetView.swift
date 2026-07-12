@@ -1,10 +1,21 @@
 import SwiftUI
+import TamaCore
 
 /// Tama — warm-yellow 8-bit cat mascot.
 /// Two-frame side-view walk traced from the cat/meow1.svg (contact) and
 /// cat/meow2.svg (passing) designs. Head stays level-ish; tail and legs animate.
 struct PetView: View {
-    let energy: Int
+    let mood: Mood
+
+    /// Walk speed / liveliness. Working & greeting walk; resting & napping are still.
+    private var energy: Int {
+        switch mood {
+        case .working(let intensity): return max(1, intensity)
+        case .greeting: return 2
+        case .resting, .napping: return 0
+        }
+    }
+    private var isNapping: Bool { if case .napping = mood { return true } else { return false } }
     /// Dev-only (README snapshots): freeze the animation clock to this value so the rendered
     /// frame is deterministic and "meow~" is visible. `nil` (the default) = live wall clock.
     var snapshotTime: Double? = nil
@@ -118,7 +129,7 @@ struct PetView: View {
                                 .fixedSize()
                                 .offset(x: spriteW + 2, y: -spriteH / 2 - 4)
                         }
-                        if energy == 0 {
+                        if isNapping {
                             sleepZ(t: t, spriteW: spriteW, spriteH: spriteH)
                         }
                     }
@@ -193,10 +204,11 @@ struct PetView: View {
         let range = Double(max(10, width - spriteW - margin * 2))
 
         guard energy > 0 else {
+            // Napping → curled nap pose with z's; resting → awake but still (frame 1).
             return (
                 x: margin + CGFloat(range / 2),
                 facingLeft: false,
-                frame: Self.napPath,
+                frame: isNapping ? Self.napPath : Self.walkPaths[0],
                 bob: 0
             )
         }

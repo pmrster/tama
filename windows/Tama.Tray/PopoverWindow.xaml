@@ -1,0 +1,22 @@
+<Window x:Class="Tama.Tray.PopoverWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:Tama.Tray.Views"
+        Title="Tama"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        SizeToContent="Height"
+        Width="300">
+    <!-- Fixed width 300 (spec §1a: mac popover width); height sizes to content, driven by
+         DashboardView's own listHeight-derived ScrollViewer height (spec §2, PopoverListHeight).
+         Chrome brushes come from Palette (theme-aware), never a hardcoded hex, so light/dark
+         retinting via Palette.Apply (see code-behind) actually takes effect here. -->
+    <Border Background="{x:Static views:Palette.Panel}" BorderBrush="{x:Static views:Palette.PanelEdge}"
+            BorderThickness="1" CornerRadius="8">
+        <views:DashboardView x:Name="Dashboard" />
+    </Border>
+</Window>
