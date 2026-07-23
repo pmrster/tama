@@ -59,14 +59,20 @@ public partial class PopoverWindow : Window
     /// SizeToContent="Height" has already measured ActualHeight.</summary>
     private void PositionNearTray()
     {
-        // NOTE: Screen.WorkingArea is physical pixels (WinForms); Left/Top/ActualHeight are
-        // 96-DPI device-independent units (WPF). Left unconverted for Task 2 (compiles and is
-        // directionally correct on the common 100% scale factor); a DPI-aware conversion via
-        // this window's WindowsPresentationSource/CompositionTarget.TransformFromDevice belongs
-        // with the real visual polish pass, not this shell task.
+        // Screen.WorkingArea is PHYSICAL pixels (WinForms); Left/Top/Width/ActualHeight are
+        // 96-DPI device-independent units (WPF). On any display scaled above 100% (125%/150% is
+        // the Windows-laptop default) the two spaces diverge, so assigning physical coords straight
+        // to Left/Top shoves the popover off the bottom-right edge — open and activated but
+        // invisible. Convert the physical work-area corner into this window's logical units via its
+        // DPI transform (available once Loaded has created the HWND) before subtracting the popover
+        // size, then clamp so a tiny/oddly-scaled screen can't still push it off-screen.
         var workArea = System.Windows.Forms.Screen.PrimaryScreen!.WorkingArea;
         const double margin = 8;
-        Left = workArea.Right - Width - margin;
-        Top = workArea.Bottom - ActualHeight - margin;
+        var toLogical = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice
+            ?? System.Windows.Media.Matrix.Identity;
+        var corner = toLogical.Transform(new System.Windows.Point(workArea.Right, workArea.Bottom));
+        var origin = toLogical.Transform(new System.Windows.Point(workArea.Left, workArea.Top));
+        Left = Math.Max(origin.X, corner.X - Width - margin);
+        Top = Math.Max(origin.Y, corner.Y - ActualHeight - margin);
     }
 }
