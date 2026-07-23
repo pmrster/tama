@@ -1,0 +1,103 @@
+name: windows-release
+
+# Builds the one-file Windows installer (TamaSetup.exe) and publishes it.
+#
+# Push a tag like `win-v0.1.0`  -> builds the installer AND attaches it to a GitHub Release
+#                                  named after the tag (created if it doesn't exist yet).
+# Run manually (workflow_dispatch) -> builds the installer and uploads it as a downloadable
+#                                     Actions artifact only (no Release touched) — handy for testing.
+on:
+  push:
+    tags:
+      - "win-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version shown in Add/Remove Programs (manual runs only)"
+        required: false
+        default: "0.0.0-dev"
+
+permissions:
+  contents: write # needed to create/upload the Release asset
+
+jobs:
+  installer:
+    name: Build installer (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Resolve version
+        id: ver
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/win-v*') {
+            $v = $env:GITHUB_REF -replace '^refs/tags/win-v', ''
+          } else {
+            $v = $env:INPUT_VERSION
+          }
+          # Strict allowlist — the version flows onto the ISCC command line and into an Inno
+          # #define, so reject anything but semver-ish chars (blocks command/output injection).
+          if ($v -notmatch '^[0-9A-Za-z.\-+]+$') {
+            Write-Error "Invalid version '$v' — expected characters [0-9A-Za-z.-+] only."
+            exit 1
+          }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Resolved version: $v"
+
+      - name: Publish self-contained x64
+        run: >
+          dotnet publish windows/Tama.Tray -c Release -r win-x64 --self-contained
+          -p:EnableWindowsTargeting=true -o dist/win-x64
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        env:
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=$env:APP_VERSION" `
+            windows/Packaging/Tama.iss
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $f = "dist/installer/TamaSetup.exe"
+          $hash = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
+          "$hash  TamaSetup.exe" | Out-File -Encoding ascii "$f.sha256"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TamaSetup
+          path: |
+            dist/installer/TamaSetup.exe
+            dist/installer/TamaSetup.exe.sha256
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/win-v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          gh release view $env:TAG 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --title $env:TAG --notes "Tama for Windows $env:TAG" `
+              dist/installer/TamaSetup.exe dist/installer/TamaSetup.exe.sha256
+          } else {
+            gh release upload $env:TAG `
+              dist/installer/TamaSetup.exe dist/installer/TamaSetup.exe.sha256 --clobber
+          }

@@ -7,6 +7,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Embeds the pixel-cat icon into the exe's Win32 resources so the Start Menu shortcut,
+         taskbar, Alt-Tab and Task Manager all show the cat rather than a blank default. Baked
+         from IconRenderer's awake grid — see Packaging/tama.ico (regenerate with the gen script
+         only if the grid/brand color changes). -->
+    <ApplicationIcon>..\Packaging\tama.ico</ApplicationIcon>
     <!-- App.xaml stays an ordinary ApplicationDefinition (unchanged, still auto-generates its own
          ignored Main in App.g.cs); StartupObject just tells csc to use Program.Main instead, so
          bootstrap logic (AgentMonitor wiring, tray icon, popover) lives in a plain, readable
