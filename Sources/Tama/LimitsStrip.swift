@@ -1,11 +1,12 @@
 import SwiftUI
 import TamaCore
 
-/// Plan limits per provider account: one compact row per `AccountQuota` — provider dot, who the
-/// account is, then a mini gauge per window (5h / wk / per-model) with the used share. Hidden
-/// when nothing is known. Reset countdown, data age and source live in the row's tooltip; a row
-/// whose snapshot is older than 15 minutes is dimmed, and a window whose reset has already
-/// passed shows "reset" instead of a stale percentage.
+/// Its own top-level "LIMITS" section (bracketed by dividers, like the tree): per provider account,
+/// how much of the subscription's session (5h) and weekly window is used. Each account is a header
+/// line — who it is (label · email · plan) — followed by one row per window: label, a fill bar, the
+/// used %, and the reset countdown. A snapshot older than 15 min dims the whole account and shows an
+/// "as of …" note; a window whose reset has passed reads "reset" instead of a stale number. The
+/// section (and its leading divider) disappear entirely when no quota is known.
 struct LimitsStrip: View {
     @ObservedObject var monitor: AgentMonitor
 
@@ -13,49 +14,70 @@ struct LimitsStrip: View {
 
     var body: some View {
         if !monitor.state.quotas.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(monitor.state.quotas) { row($0) }
+            Divider().overlay(Palette.panelEdge)
+            VStack(alignment: .leading, spacing: 9) {
+                Text("LIMITS")
+                    .font(.system(size: scaled(10), weight: .heavy)).tracking(1)
+                    .foregroundStyle(Palette.dim)
+                ForEach(monitor.state.quotas) { account($0) }
             }
-            .padding(.horizontal, 14).padding(.bottom, 8)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func row(_ q: AccountQuota) -> some View {
+    @ViewBuilder
+    private func account(_ q: AccountQuota) -> some View {
         let tint = providerTint(q.provider)
-        let stale = QuotaFormat.staleness(fetchedAt: q.fetchedAt, now: now) != nil
-        return HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: 8, height: 8)
-            Text(QuotaFormat.title(q, compact: true))
-                .font(.system(size: scaled(9.5), design: .monospaced))
-                .foregroundStyle(Palette.dim)
-                .lineLimit(1).truncationMode(.middle)
-            Spacer(minLength: 6)
+        let stale = QuotaFormat.staleness(fetchedAt: q.fetchedAt, now: now)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: 8, height: 8)
+                Text(QuotaFormat.title(q))
+                    .font(.system(size: scaled(11), weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Palette.text)
+                    .lineLimit(1).truncationMode(.middle)
+                if let stale {
+                    Text(stale).font(.system(size: scaled(8.5), design: .monospaced))
+                        .foregroundStyle(Palette.dim).fixedSize()
+                }
+                Spacer(minLength: 0)
+            }
             ForEach(Array(q.windows.enumerated()), id: \.offset) { _, w in
-                gauge(w, tint: tint)
+                windowRow(w, tint: tint)
             }
         }
-        .opacity(stale ? 0.55 : 1)
+        .opacity(stale != nil ? 0.6 : 1)
         .help(help(q))
     }
 
-    private func gauge(_ w: QuotaWindow, tint: Color) -> some View {
+    private func windowRow(_ w: QuotaWindow, tint: Color) -> some View {
         let expired = w.isExpired(at: now)
         let frac = expired ? 0 : w.usedPercent / 100
         let color: Color = w.usedPercent >= 90 ? Palette.warn : (w.usedPercent >= 70 ? Palette.yellow : tint)
-        return HStack(spacing: 3) {
+        return HStack(spacing: 8) {
             Text(w.kind.label)
-                .font(.system(size: scaled(8), design: .monospaced))
+                .font(.system(size: scaled(9.5), design: .monospaced))
                 .foregroundStyle(Palette.dim)
+                .frame(width: scaled(26), alignment: .leading)
             ZStack(alignment: .leading) {
-                Capsule().fill(Palette.track).frame(width: 22, height: 4)
+                Capsule().fill(Palette.track).frame(width: 64, height: 5)
                 Capsule().fill(expired ? Palette.dim : color)
-                    .frame(width: max(frac > 0 ? 2 : 0, 22 * frac), height: 4)
+                    .frame(width: max(frac > 0 ? 3 : 0, 64 * frac), height: 5)
             }
-            Text(expired ? "reset" : QuotaFormat.percent(w.usedPercent))
-                .font(.system(size: scaled(10), weight: .semibold, design: .monospaced))
+            Text(expired ? "—" : QuotaFormat.percent(w.usedPercent))
+                .font(.system(size: scaled(10.5), weight: .semibold, design: .monospaced))
                 .foregroundStyle(expired ? Palette.dim : color)
+                .frame(width: scaled(46), alignment: .leading)
+            if let reset = QuotaFormat.resetLabel(w, now: now) {
+                Text(reset)
+                    .font(.system(size: scaled(9), design: .monospaced))
+                    .foregroundStyle(Palette.dim)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
         }
-        .fixedSize()
+        .padding(.leading, 14)
     }
 
     private func help(_ q: AccountQuota) -> String {

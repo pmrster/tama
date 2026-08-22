@@ -39,6 +39,16 @@ final class QuotaFormatTests: XCTestCase {
         XCTAssertEqual(QuotaFormat.title(noEmail, compact: true), "Plus")
     }
 
+    func test_reset_label_shows_countdown_or_reset_or_nothing() {
+        let now = t0
+        XCTAssertEqual(QuotaFormat.resetLabel(QuotaWindow(kind: .weekly, usedPercent: 40,
+                       resetsAt: now.addingTimeInterval(3 * 86400 + 4 * 3600)), now: now), "resets 3d 4h")
+        XCTAssertEqual(QuotaFormat.resetLabel(QuotaWindow(kind: .session, usedPercent: 40,
+                       resetsAt: now.addingTimeInterval(-5)), now: now), "reset", "past the reset → the window has rolled over")
+        XCTAssertNil(QuotaFormat.resetLabel(QuotaWindow(kind: .session, usedPercent: 0, resetsAt: nil), now: now),
+                     "no reset time → no label")
+    }
+
     func test_percent_label_drops_needless_decimals() {
         XCTAssertEqual(QuotaFormat.percent(46), "46%")
         XCTAssertEqual(QuotaFormat.percent(12.5), "12.5%")

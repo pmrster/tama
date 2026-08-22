@@ -53,8 +53,13 @@ menu bar:  🐱 3
 ● 3 agents active
 
 TODAY ~$4.90    7D ~$31    30D ~$120
-● dev@example.com · Max 5x      5h ▇▁ 37%   wk ▇▇ 72%
-● Plus                                      wk ▇▁ 46%
+
+LIMITS
+● dev@example.com · Max 5x
+    5h  ▇▇▁▁▁▁  37%   resets 2h 10m
+    wk  ▇▇▇▇▁▁  72%   resets 3d 4h
+● Codex · Plus
+    wk  ▇▇▇▁▁▁  46%   resets 5d 15h
 
 ▾ CLAUDE CODE                       2 proj · 2 active
   ▾ tama-widget (2)                 91.4k ctx ~$3.05

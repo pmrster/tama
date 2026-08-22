@@ -32,6 +32,13 @@ public enum QuotaFormat {
         return parts.isEmpty ? "default" : parts.joined(separator: " · ")
     }
 
+    /// The reset hint for a window: "resets 2h 10m", "reset" once the window has rolled over,
+    /// or nil when the provider gave no reset time.
+    public static func resetLabel(_ w: QuotaWindow, now: Date) -> String? {
+        guard let r = w.resetsAt else { return nil }
+        return w.isExpired(at: now) ? "reset" : "resets \(countdown(to: r, from: now))"
+    }
+
     /// "46%" / "12.5%" — one decimal only when it carries information.
     public static func percent(_ v: Double) -> String {
         let rounded = (v * 10).rounded() / 10
