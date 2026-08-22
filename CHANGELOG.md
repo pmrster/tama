@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Plan limits (session / weekly quota) per account.** A new strip under the usage tiles shows,
+  per provider account, how much of your subscription's **5-hour** and **weekly** limit is used,
+  with a reset countdown — read from what the agents already leave on disk (no network, no
+  credentials). **Codex** limits come straight from its per-turn `rate_limits` in the session log
+  (always live). **Claude Code** limits come from its cached `/usage` snapshot in `~/.claude.json`
+  (only the `cachedUsageUtilization` + `oauthAccount` keys are read — never the prompt history);
+  since that cache can lag, rows older than 15 min dim and show an "as of …" hint.
+- **Multiple accounts.** If you run a second Claude/Codex login on this Mac via `CLAUDE_CONFIG_DIR`
+  / `CODEX_HOME`, add its folder in **Settings → Accounts** and its sessions, usage totals and plan
+  limits appear as their own account (tree rows tagged with the account label).
+- **Optional live Claude limits.** Claude Code only streams its live 5h/weekly numbers to your
+  statusline. Settings shows a one-line "bridge" you can add to your statusLine that mirrors that
+  data into a file Tama reads, upgrading the Claude rows from the cached snapshot to live figures.
+
 ## 0.4.0 — 2026-07-12
 
 - **Usage section is now tabbed** — the expanded detail shows one panel at a time via a

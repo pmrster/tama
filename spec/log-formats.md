@@ -134,3 +134,60 @@ Missing/empty log → no status.
 Read-only opens that never block the writing agent; reject non-regular files and reparse
 points/symlinks on files and directories; size caps above; malformed JSON lines skipped;
 never build a filesystem read path from log content (`cwd` is display-only).
+
+## Plan limits — session / weekly quota (macOS first; Windows port TODO)
+
+Per-account subscription limits, read from what the CLIs already write. No network, no
+credential files. There are no `spec/fixtures/` cases for this yet, so it is NOT part of the
+cross-impl conformance test; the shapes below are still normative for any implementation.
+
+Two numbers per account window: `usedPercent` (0…100, clamp) and `resetsAt` (a window is
+"expired" — display-dimmed — once `resetsAt < now`). Window kinds: `session` (~5h),
+`weekly` (7d), `scoped(<name>)` (provider extra, e.g. Claude per-model weekly).
+
+### Codex — `<codex-home>/sessions/YYYY/MM/DD/rollout-*.jsonl`
+
+The LAST `token_count` event carrying a `payload.rate_limits` block, in the most recently
+modified rollout (look back 14 day-folders; try the newest few, skipping ones with no
+`rate_limits` yet). Shape:
+
+```
+payload.rate_limits {
+  plan_type: "plus" | "pro" | "team" | …,
+  primary:   { used_percent: n, window_minutes: n, resets_at: <epoch seconds> },
+  secondary: { … } | null
+}
+```
+
+`window_minutes` → kind: `< 1440` → `session`; `10080` → `weekly`; else `scoped("<days>d")`.
+`plan_type` → prettified ("plus" → "Plus"). Identity (email) is NOT taken — it lives only in
+`auth.json`, which is never read.
+
+### Claude Code — `<claude-config-dir>/.claude.json` (default: `~/.claude.json`)
+
+Parse ONLY these two top-level keys; retain nothing else (the file also holds per-project
+prompt history under `projects` — never read it):
+
+```
+oauthAccount { emailAddress, organizationType: "claude_max"|…, organizationRateLimitTier: "default_claude_max_5x"|… }
+cachedUsageUtilization {
+  fetchedAtMs: <ms>, accountUuid,
+  utilization {
+    five_hour  { utilization: <percent>, resets_at: <ISO8601, any fractional precision> },
+    seven_day  { … },
+    seven_day_opus | seven_day_sonnet { … } | null   // → scoped("Opus"/"Sonnet")
+  }
+}
+```
+
+This is Claude Code's own `/usage` cache; it refreshes on Claude's schedule, so `fetchedAtMs`
+can be > a day old — display "as of …" and stale-dim. Plan name = org type minus the `claude_`
+prefix, plus the tier's trailing `Nx` multiplier ("claude_max" + "…_5x" → "Max 5x").
+
+### Statusline bridge (opt-in) — `<app-support>/Tama/statusline/<label>.json`
+
+The documented Claude Code status-line JSON, mirrored to a file by the user's statusline
+command (`default.json` for the default account; `<label>.json` per extra account). Read
+`rate_limits.five_hour.used_percentage` + `.resets_at` (epoch s) and the `seven_day` equivalent;
+`fetchedAt` = file mtime. Preferred over the `.claude.json` cache for an account when it is
+newer; identity/plan still come from `.claude.json`.

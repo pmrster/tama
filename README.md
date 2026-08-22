@@ -52,6 +52,10 @@ menu bar:  🐱 3
 
 ● 3 agents active
 
+TODAY ~$4.90    7D ~$31    30D ~$120
+● dev@example.com · Max 5x      5h ▇▁ 37%   wk ▇▇ 72%
+● Plus                                      wk ▇▁ 46%
+
 ▾ CLAUDE CODE                       2 proj · 2 active
   ▾ tama-widget (2)                 91.4k ctx ~$3.05
       Rename app    opus-4-8  ▇▇▁  48.2k ~$1.40   3m
@@ -62,6 +66,13 @@ menu bar:  🐱 3
 
 TODAY                       CC 1.2M ~$4.10   CX 240k ~$0.80
 ```
+
+Under the usage tiles, a **plan-limits** strip shows how much of each account's
+subscription is used — the **5-hour** and **weekly** window, with a reset countdown on
+hover. Codex numbers are live (read from its session log); Claude's come from its cached
+`/usage` snapshot and show an "as of …" note when they lag. Running a second Claude/Codex
+login on this Mac (via `CLAUDE_CONFIG_DIR` / `CODEX_HOME`)? Add it in **Settings → Accounts**
+and each account gets its own sessions, totals and limits.
 
 Each session row shows its name (the opening prompt, or a short id), the model, a
 context-fill gauge with the live token count, an estimated cost, and how long ago it
@@ -252,7 +263,10 @@ Two SwiftPM targets with a deliberate split:
 Tama is designed to be boringly safe:
 
 - **Read-only.** It reads logs under `~/.claude`, `~/.codex`, and `~/.gemini` using
-  read-only memory-mapped reads; it never writes back to those folders.
+  read-only memory-mapped reads; it never writes back to those folders. For plan limits it
+  also reads `~/.claude.json` (only the cached-usage and account keys — never your prompt
+  history) and its own bridge folder. Credential files (`~/.codex/auth.json`, the Keychain)
+  are never touched.
 - **Local-only.** No analytics, telemetry, automatic update checks, or in-app network
   requests. The About window has user-clicked GitHub links that open in your browser.
 - **No command execution.** The running app never spawns a shell command or process.
