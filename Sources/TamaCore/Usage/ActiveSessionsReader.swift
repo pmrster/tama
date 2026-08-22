@@ -50,8 +50,10 @@ public struct Activity: Sendable, Equatable {
 /// log files never change between scans, so they are parsed once; only the file(s) being
 /// actively written are re-read. This keeps a scan cheap even with tens of MB of logs.
 public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
-    private let claudeProjectsDir: URL
-    private let codexSessionsDir: URL
+    /// (projects/sessions dir, account label) to scan for Claude / Codex. Evaluated on every scan
+    /// so accounts added in Settings take effect without recreating the reader.
+    private let claudeDirs: () -> [(dir: URL, account: String?)]
+    private let codexDirs: () -> [(dir: URL, account: String?)]
     private let geminiTmpDir: URL?
     private let antigravityHistoryFile: URL?
     private let now: () -> Date
@@ -70,6 +72,7 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
         let mtime: Date
         let size: Int
         let provider: Provider
+        let account: String?
         let folder: String
         let buckets: [Int: TokenBreakdown]   // hours-since-epoch → that hour's token breakdown
         let contextTokens: Int     // live context-window occupancy (last turn input side)
@@ -98,11 +101,36 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
     }
     private var cache: [String: Entry] = [:]
 
-    public init(claudeProjectsDir: URL, codexSessionsDir: URL,
+    /// Designated init: `roots` is consulted on every scan and split into per-account Claude/Codex
+    /// dirs (Gemini/Antigravity have no config-dir accounts, so they stay single-sourced).
+    public init(roots: @escaping () -> [AccountRoot],
                 geminiTmpDir: URL? = nil, antigravityHistoryFile: URL? = nil,
                 now: @escaping () -> Date, calendar: Calendar = .current, limit: Int = 16) {
-        self.claudeProjectsDir = claudeProjectsDir
-        self.codexSessionsDir = codexSessionsDir
+        self.claudeDirs = { roots().filter { $0.provider == .claudeCode }.map { ($0.claudeProjectsDir, $0.label) } }
+        self.codexDirs = { roots().filter { $0.provider == .codex }.map { ($0.codexSessionsDir, $0.label) } }
+        self.geminiTmpDir = geminiTmpDir
+        self.antigravityHistoryFile = antigravityHistoryFile
+        self.now = now
+        self.calendar = calendar
+        self.limit = limit
+    }
+
+    /// Back-compat init used by tests / the safety suite: one default (unlabelled) account whose
+    /// Claude/Codex logs live directly at the given dirs (NOT `<root>/projects` etc.).
+    public convenience init(claudeProjectsDir: URL, codexSessionsDir: URL,
+                            geminiTmpDir: URL? = nil, antigravityHistoryFile: URL? = nil,
+                            now: @escaping () -> Date, calendar: Calendar = .current, limit: Int = 16) {
+        self.init(dirs: { ([(claudeProjectsDir, nil)], [(codexSessionsDir, nil)]) },
+                  geminiTmpDir: geminiTmpDir, antigravityHistoryFile: antigravityHistoryFile,
+                  now: now, calendar: calendar, limit: limit)
+    }
+
+    /// Lowest-level init taking the resolved dir lists directly.
+    private init(dirs: @escaping () -> (claude: [(dir: URL, account: String?)], codex: [(dir: URL, account: String?)]),
+                 geminiTmpDir: URL?, antigravityHistoryFile: URL?,
+                 now: @escaping () -> Date, calendar: Calendar, limit: Int) {
+        self.claudeDirs = { dirs().claude }
+        self.codexDirs = { dirs().codex }
         self.geminiTmpDir = geminiTmpDir
         self.antigravityHistoryFile = antigravityHistoryFile
         self.now = now
@@ -112,8 +140,7 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
 
     public convenience init(now: @escaping () -> Date, calendar: Calendar = .current, limit: Int = 16) {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        self.init(claudeProjectsDir: home.appendingPathComponent(".claude/projects"),
-                  codexSessionsDir: home.appendingPathComponent(".codex/sessions"),
+        self.init(roots: { AccountRoot.defaults(home: home) },
                   geminiTmpDir: home.appendingPathComponent(".gemini/tmp"),
                   antigravityHistoryFile: home.appendingPathComponent(".gemini/antigravity-cli/history.jsonl"),
                   now: now, calendar: calendar, limit: limit)
@@ -154,7 +181,7 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
                 modelBreakdowns[e.provider, default: [:]][modelKey, default: TokenBreakdown()] =
                     modelBreakdowns[e.provider, default: [:]][modelKey, default: TokenBreakdown()] + bd
                 return SessionInfo(provider: e.provider, project: URL(fileURLWithPath: e.folder).lastPathComponent,
-                            folder: e.folder, lastActivity: e.last, tokens: bd.total,
+                            folder: e.folder, account: e.account, lastActivity: e.last, tokens: bd.total,
                             cacheTokens: bd.cacheRead + bd.cacheWrite, contextTokens: e.contextTokens,
                             contextWindow: e.contextWindow, model: e.model, sessionId: e.session,
                             title: e.title, breakdown: bd, messages: e.messages)
@@ -167,16 +194,18 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
 
     // MARK: Cached file parsing
 
-    /// Adapt a ParsedLog to the reader's cache Entry (mtime/size are filled in by `cached`).
+    /// Adapt a ParsedLog to the reader's cache Entry (mtime/size/account are filled in by `cached`).
     private static func entry(from p: ParsedLog?) -> Entry? {
         guard let p else { return nil }
-        return Entry(mtime: .distantPast, size: 0, provider: p.provider, folder: p.folder,
+        return Entry(mtime: .distantPast, size: 0, provider: p.provider, account: nil, folder: p.folder,
                      buckets: p.buckets, contextTokens: p.contextTokens, contextWindow: p.contextWindow,
                      last: p.last, model: p.model, session: p.session, title: p.title, messages: p.messages)
     }
 
-    /// Returns the cached entry if (mtime, size) match, else parses via `parse` and caches it.
-    private func cached(_ file: URL, fresh: inout [String: Entry], parse: (URL) -> Entry?) -> Entry? {
+    /// Returns the cached entry if (mtime, size) match, else parses via `parse` and caches it,
+    /// tagged with the `account` of the root it came from. File paths are globally unique, so a
+    /// cached entry already carries the right account.
+    private func cached(_ file: URL, account: String?, fresh: inout [String: Entry], parse: (URL) -> Entry?) -> Entry? {
         guard let vals = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
               let mtime = vals.contentModificationDate, let size = vals.fileSize else { return nil }
         let key = file.path
@@ -185,7 +214,7 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
             return hit
         }
         guard let parsed = parse(file) else { return nil }
-        let entry = Entry(mtime: mtime, size: size, provider: parsed.provider, folder: parsed.folder,
+        let entry = Entry(mtime: mtime, size: size, provider: parsed.provider, account: account, folder: parsed.folder,
                           buckets: parsed.buckets, contextTokens: parsed.contextTokens, contextWindow: parsed.contextWindow,
                           last: parsed.last, model: parsed.model, session: parsed.session, title: parsed.title,
                           messages: parsed.messages)
@@ -197,14 +226,16 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
         let fm = FileManager.default
         let directoryKeys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
         let fileKeys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]
-        guard let dirs = try? fm.contentsOfDirectory(at: claudeProjectsDir, includingPropertiesForKeys: directoryKeys) else { return }
-        for dir in dirs {
-            guard SafeFileReader.isSafeDirectory(dir) else { continue }
-            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: fileKeys) else { continue }
-            for file in files where file.pathExtension == "jsonl" {
-                guard let mod = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                      inWindow(mod, window, now: now) else { continue }
-                if let e = cached(file, fresh: &fresh, parse: { Self.entry(from: LogFileParser.parseClaude($0)) }) { entries.append(e) }
+        for (projectsDir, account) in claudeDirs() {
+            guard let dirs = try? fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: directoryKeys) else { continue }
+            for dir in dirs {
+                guard SafeFileReader.isSafeDirectory(dir) else { continue }
+                guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: fileKeys) else { continue }
+                for file in files where file.pathExtension == "jsonl" {
+                    guard let mod = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                          inWindow(mod, window, now: now) else { continue }
+                    if let e = cached(file, account: account, fresh: &fresh, parse: { Self.entry(from: LogFileParser.parseClaude($0)) }) { entries.append(e) }
+                }
             }
         }
     }
@@ -226,19 +257,21 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
     private func scanCodex(window: TokenWindow, now: Date, into entries: inout [Entry], fresh: inout [String: Entry]) {
         let fm = FileManager.default
         let fileKeys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]
-        for dayOffset in 0..<codexLookbackDays {
-            guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: now) else { continue }
-            let c = calendar.dateComponents([.year, .month, .day], from: day)
-            guard let y = c.year, let m = c.month, let d = c.day else { continue }
-            let dayDir = codexSessionsDir.appendingPathComponent(String(format: "%04d", y))
-                .appendingPathComponent(String(format: "%02d", m)).appendingPathComponent(String(format: "%02d", d))
-            guard SafeFileReader.isSafeDirectory(dayDir) else { continue }
-            guard let files = try? fm.contentsOfDirectory(at: dayDir, includingPropertiesForKeys: fileKeys) else { continue }
-            for file in files where file.lastPathComponent.hasPrefix("rollout-") && file.pathExtension == "jsonl" {
-                // Only sessions touched in-window (older folders may hold sessions last active days ago).
-                guard let mod = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                      inWindow(mod, window, now: now) else { continue }
-                if let e = cached(file, fresh: &fresh, parse: { Self.entry(from: LogFileParser.parseCodex($0)) }) { entries.append(e) }
+        for (sessionsDir, account) in codexDirs() {
+            for dayOffset in 0..<codexLookbackDays {
+                guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: now) else { continue }
+                let c = calendar.dateComponents([.year, .month, .day], from: day)
+                guard let y = c.year, let m = c.month, let d = c.day else { continue }
+                let dayDir = sessionsDir.appendingPathComponent(String(format: "%04d", y))
+                    .appendingPathComponent(String(format: "%02d", m)).appendingPathComponent(String(format: "%02d", d))
+                guard SafeFileReader.isSafeDirectory(dayDir) else { continue }
+                guard let files = try? fm.contentsOfDirectory(at: dayDir, includingPropertiesForKeys: fileKeys) else { continue }
+                for file in files where file.lastPathComponent.hasPrefix("rollout-") && file.pathExtension == "jsonl" {
+                    // Only sessions touched in-window (older folders may hold sessions last active days ago).
+                    guard let mod = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                          inWindow(mod, window, now: now) else { continue }
+                    if let e = cached(file, account: account, fresh: &fresh, parse: { Self.entry(from: LogFileParser.parseCodex($0)) }) { entries.append(e) }
+                }
             }
         }
     }
@@ -257,7 +290,7 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
             let last = (try? logFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
                 ?? (try? dir.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             guard let last, inWindow(last, window, now: now) else { continue }
-            out.append(Entry(mtime: .distantPast, size: 0, provider: .gemini, folder: folder,
+            out.append(Entry(mtime: .distantPast, size: 0, provider: .gemini, account: nil, folder: folder,
                              buckets: [:], contextTokens: 0, contextWindow: 0,
                              last: last, model: nil, session: nil, title: nil, messages: 0))
         }
@@ -277,7 +310,7 @@ public final class ActiveSessionsReader: ActivityScanning, @unchecked Sendable {
         }
         return byFolder.compactMap { folder, date in
             inWindow(date, window, now: now)
-                ? Entry(mtime: .distantPast, size: 0, provider: .antigravity, folder: folder,
+                ? Entry(mtime: .distantPast, size: 0, provider: .antigravity, account: nil, folder: folder,
                         buckets: [:], contextTokens: 0, contextWindow: 0,
                         last: date, model: nil, session: nil, title: nil, messages: 0)
                 : nil

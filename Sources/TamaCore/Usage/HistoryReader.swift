@@ -28,8 +28,8 @@ public protocol HistoryScanning: Sendable {
 /// Shares the per-line parsers via `LogFileParser`; caches per file by (mtime, size) so old,
 /// never-changing files parse at most once per launch. Strictly read-only.
 public final class HistoryReader: HistoryScanning, @unchecked Sendable {
-    private let claudeProjectsDir: URL
-    private let codexSessionsDir: URL
+    private let claudeDirs: () -> [URL]
+    private let codexDirs: () -> [URL]
     private let now: () -> Date
     private let calendar: Calendar
 
@@ -49,19 +49,33 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
     }
     private var cache: [String: Contribution] = [:]
 
-    public init(claudeProjectsDir: URL, codexSessionsDir: URL,
-                now: @escaping () -> Date, calendar: Calendar = .current) {
-        self.claudeProjectsDir = claudeProjectsDir
-        self.codexSessionsDir = codexSessionsDir
+    /// Multi-account: `roots` is consulted on every scan; history aggregates across every account
+    /// (usage totals span them all — accounts aren't distinguished in the per-day rollups).
+    public init(roots: @escaping () -> [AccountRoot],
+                now: @escaping () -> Date = { Date() }, calendar: Calendar = .current) {
+        self.claudeDirs = { roots().filter { $0.provider == .claudeCode }.map { $0.claudeProjectsDir } }
+        self.codexDirs = { roots().filter { $0.provider == .codex }.map { $0.codexSessionsDir } }
+        self.now = now
+        self.calendar = calendar
+    }
+
+    /// Back-compat init: a single default account whose logs live directly at the given dirs.
+    public convenience init(claudeProjectsDir: URL, codexSessionsDir: URL,
+                            now: @escaping () -> Date, calendar: Calendar = .current) {
+        self.init(claudeDirs: { [claudeProjectsDir] }, codexDirs: { [codexSessionsDir] },
+                  now: now, calendar: calendar)
+    }
+
+    private init(claudeDirs: @escaping () -> [URL], codexDirs: @escaping () -> [URL],
+                 now: @escaping () -> Date, calendar: Calendar) {
+        self.claudeDirs = claudeDirs
+        self.codexDirs = codexDirs
         self.now = now
         self.calendar = calendar
     }
 
     public convenience init(now: @escaping () -> Date = { Date() }, calendar: Calendar = .current) {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        self.init(claudeProjectsDir: home.appendingPathComponent(".claude/projects"),
-                  codexSessionsDir: home.appendingPathComponent(".codex/sessions"),
-                  now: now, calendar: calendar)
+        self.init(roots: { AccountRoot.defaults() }, now: now, calendar: calendar)
     }
 
     public func scanHistory(days: Int) -> UsageScan {
@@ -119,17 +133,19 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
     private func scanClaude(since windowStart: Date, into contributions: inout [Contribution],
                             fresh: inout [String: Contribution]) {
         let fm = FileManager.default
-        guard let dirs = try? fm.contentsOfDirectory(at: claudeProjectsDir,
-                                                     includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { return }
-        for dir in dirs {
-            guard SafeFileReader.isSafeDirectory(dir) else { continue }
-            guard let files = try? fm.contentsOfDirectory(at: dir,
-                                                          includingPropertiesForKeys: [.contentModificationDateKey]) else { continue }
-            for file in files where file.pathExtension == "jsonl" {
-                guard let mod = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                      mod >= windowStart else { continue }
-                if let c = cached(file, fresh: &fresh, parse: { self.claudeContribution($0) }) {
-                    contributions.append(c)
+        for projectsDir in claudeDirs() {
+            guard let dirs = try? fm.contentsOfDirectory(at: projectsDir,
+                                                         includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { continue }
+            for dir in dirs {
+                guard SafeFileReader.isSafeDirectory(dir) else { continue }
+                guard let files = try? fm.contentsOfDirectory(at: dir,
+                                                              includingPropertiesForKeys: [.contentModificationDateKey]) else { continue }
+                for file in files where file.pathExtension == "jsonl" {
+                    guard let mod = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                          mod >= windowStart else { continue }
+                    if let c = cached(file, fresh: &fresh, parse: { self.claudeContribution($0) }) {
+                        contributions.append(c)
+                    }
                 }
             }
         }
@@ -157,19 +173,21 @@ public final class HistoryReader: HistoryScanning, @unchecked Sendable {
     private func scanCodex(days: Int, now: Date, into contributions: inout [Contribution],
                            fresh: inout [String: Contribution]) {
         let fm = FileManager.default
-        for dayOffset in 0..<days {
-            guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: now) else { continue }
-            let c = calendar.dateComponents([.year, .month, .day], from: day)
-            guard let y = c.year, let m = c.month, let d = c.day else { continue }
-            let dayKey = String(format: "%04d-%02d-%02d", y, m, d)
-            let dayDir = codexSessionsDir.appendingPathComponent(String(format: "%04d", y))
-                .appendingPathComponent(String(format: "%02d", m))
-                .appendingPathComponent(String(format: "%02d", d))
-            guard SafeFileReader.isSafeDirectory(dayDir) else { continue }
-            guard let files = try? fm.contentsOfDirectory(at: dayDir, includingPropertiesForKeys: nil) else { continue }
-            for file in files where file.lastPathComponent.hasPrefix("rollout-") && file.pathExtension == "jsonl" {
-                if let c = cached(file, fresh: &fresh, parse: { self.codexContribution($0, dayKey: dayKey) }) {
-                    contributions.append(c)
+        for sessionsDir in codexDirs() {
+            for dayOffset in 0..<days {
+                guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: now) else { continue }
+                let c = calendar.dateComponents([.year, .month, .day], from: day)
+                guard let y = c.year, let m = c.month, let d = c.day else { continue }
+                let dayKey = String(format: "%04d-%02d-%02d", y, m, d)
+                let dayDir = sessionsDir.appendingPathComponent(String(format: "%04d", y))
+                    .appendingPathComponent(String(format: "%02d", m))
+                    .appendingPathComponent(String(format: "%02d", d))
+                guard SafeFileReader.isSafeDirectory(dayDir) else { continue }
+                guard let files = try? fm.contentsOfDirectory(at: dayDir, includingPropertiesForKeys: nil) else { continue }
+                for file in files where file.lastPathComponent.hasPrefix("rollout-") && file.pathExtension == "jsonl" {
+                    if let c = cached(file, fresh: &fresh, parse: { self.codexContribution($0, dayKey: dayKey) }) {
+                        contributions.append(c)
+                    }
                 }
             }
         }

@@ -90,10 +90,11 @@ private enum MetricKind: Int, CaseIterable {
 private struct FolderGroup: Identifiable {
     let folder: String
     let project: String
+    let account: String?     // account label when the sessions come from an extra config dir
     let sessions: [SessionInfo]
     let contextTotal: Int    // live context held across this folder's sessions
     let last: Date
-    var id: String { folder }
+    var id: String { "\(account ?? ""):\(folder)" }
 }
 
 /// Sessions in a folder that share the same name (same opening prompt) — e.g. repeated
@@ -153,7 +154,7 @@ struct DashboardView: View {
             if !ui.collapsedProviders.contains(p.rawValue) {
                 let groups = folderGroups(sessions(for: p))
                 rows += groups.count
-                for g in groups where ui.expandedFolders.contains(key(p, g.folder)) { rows += g.sessions.count }
+                for g in groups where ui.expandedFolders.contains(key(p, g)) { rows += g.sessions.count }
             }
         }
         return min(max(CGFloat(rows) * 26 + 16, 60), 340)
@@ -414,7 +415,7 @@ struct DashboardView: View {
             }
             .buttonStyle(.plain).help(expanded ? "Collapse this provider" : "Expand this provider's projects")
             if expanded {
-                ForEach(groups) { folderBlock(provider, $0, tint: tint) }
+                ForEach(groups) { folderBlock(provider, $0, tint: tint, showAccount: !accountLabels(for: provider).isEmpty) }
             }
         }
     }
@@ -422,8 +423,8 @@ struct DashboardView: View {
     // MARK: Folder level
 
     @ViewBuilder
-    private func folderBlock(_ provider: Provider, _ g: FolderGroup, tint: Color) -> some View {
-        let k = key(provider, g.folder)
+    private func folderBlock(_ provider: Provider, _ g: FolderGroup, tint: Color, showAccount: Bool) -> some View {
+        let k = key(provider, g)
         let expanded = ui.expandedFolders.contains(k)
         let live = g.sessions.contains { monitor.isActive($0) }
         VStack(alignment: .leading, spacing: 2) {
@@ -438,6 +439,14 @@ struct DashboardView: View {
                             .help(ui.revealedPaths.contains(k) ? "Hide folder path" : "Show folder path")
                         Text("(\(g.sessions.count))").font(.system(size: scaled(9), design: .monospaced)).foregroundStyle(Palette.dim)
                             .fixedSize()
+                        if showAccount, let acct = g.account {
+                            Text(acct).font(.system(size: scaled(8), weight: .semibold, design: .monospaced))
+                                .foregroundStyle(tint)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(RoundedRectangle(cornerRadius: 3).fill(tint.opacity(0.16)))
+                                .fixedSize()
+                                .help("Account: \(acct)")
+                        }
                     }
                 } primary: {
                     HStack(spacing: 6) {
@@ -782,13 +791,22 @@ struct DashboardView: View {
     }
 
     private func folderGroups(_ sessions: [SessionInfo]) -> [FolderGroup] {
-        Dictionary(grouping: sessions, by: { $0.folder }).map { folder, sess in
-            FolderGroup(folder: folder, project: sess.first?.project ?? folder,
+        // Key by (account, folder) so the same project open under two accounts stays two rows.
+        Dictionary(grouping: sessions, by: { "\($0.account ?? "")\u{0}\($0.folder)" }).map { _, sess in
+            let first = sess.first
+            return FolderGroup(folder: first?.folder ?? "", project: first?.project ?? "",
+                        account: first?.account,
                         sessions: sess.sorted { $0.lastActivity > $1.lastActivity },
                         contextTotal: sess.reduce(0) { $0 + $1.contextTokens },
                         last: sess.map { $0.lastActivity }.max() ?? .distantPast)
         }
         .sorted { $0.last > $1.last }
+    }
+
+    /// Distinct account labels present for a provider (nil default excluded) — drives whether the
+    /// tree shows an account tag on each folder row.
+    private func accountLabels(for provider: Provider) -> [String] {
+        Array(Set(sessions(for: provider).compactMap { $0.account })).sorted()
     }
 
     private func nameGroups(_ sessions: [SessionInfo]) -> [NameGroup] {
@@ -860,6 +878,7 @@ struct DashboardView: View {
     }
 
     private func key(_ provider: Provider, _ folder: String) -> String { "\(provider.rawValue):\(folder)" }
+    private func key(_ provider: Provider, _ g: FolderGroup) -> String { "\(provider.rawValue):\(g.account ?? ""):\(g.folder)" }
     private func groupKey(_ provider: Provider, _ folder: String, _ name: String) -> String { "\(provider.rawValue):\(folder):\(name)" }
 
     private func toggle(_ set: inout Set<String>, _ k: String) {
@@ -868,7 +887,7 @@ struct DashboardView: View {
 
     private func expandAll() {
         for p in visibleProviders {
-            for g in folderGroups(sessions(for: p)) { ui.expandedFolders.insert(key(p, g.folder)) }
+            for g in folderGroups(sessions(for: p)) { ui.expandedFolders.insert(key(p, g)) }
         }
     }
 

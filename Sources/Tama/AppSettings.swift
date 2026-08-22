@@ -29,12 +29,17 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Extra provider accounts (config dirs) to scan, beyond the default `~/.claude` / `~/.codex`.
+    /// The readers re-read these from the store on each scan; publishing here is only for the UI.
+    @Published var extraAccounts: [AccountRoot] { didSet { store.extraAccounts = extraAccounts } }
+
     init(store: SettingsStore = SettingsStore()) {
         self.store = store
         self.appearance = store.appearance
         self.fontSize = store.fontSize
         self.notifyAgentQuiet = store.notifyAgentQuiet
         self.notifyContextHigh = store.notifyContextHigh
+        self.extraAccounts = store.extraAccounts
     }
 
     /// nil = follow the OS; otherwise force light/dark. Used by SwiftUI previews/snapshots.

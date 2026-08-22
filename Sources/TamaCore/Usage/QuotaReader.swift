@@ -16,7 +16,7 @@ public protocol QuotaScanning: Sendable {
 ///
 /// Parsing is cached per file by (mtime, size). Strictly read-only.
 public final class QuotaReader: QuotaScanning, @unchecked Sendable {
-    private let roots: [AccountRoot]
+    private let rootsProvider: () -> [AccountRoot]
     private let now: () -> Date
     private let calendar: Calendar
 
@@ -33,20 +33,26 @@ public final class QuotaReader: QuotaScanning, @unchecked Sendable {
     private var claudeCache: [String: Cached<ClaudeSnapshot?>] = [:]
     private let lock = NSLock()
 
-    public init(roots: [AccountRoot], now: @escaping () -> Date, calendar: Calendar = .current) {
-        self.roots = roots
+    /// `roots` is consulted on every scan so accounts added in Settings take effect at once.
+    public init(roots: @escaping () -> [AccountRoot], now: @escaping () -> Date, calendar: Calendar = .current) {
+        self.rootsProvider = roots
         self.now = now
         self.calendar = calendar
     }
 
+    /// Fixed-roots convenience (tests).
+    public convenience init(roots: [AccountRoot], now: @escaping () -> Date, calendar: Calendar = .current) {
+        self.init(roots: { roots }, now: now, calendar: calendar)
+    }
+
     public convenience init(now: @escaping () -> Date = { Date() }, calendar: Calendar = .current) {
-        self.init(roots: AccountRoot.defaults(), now: now, calendar: calendar)
+        self.init(roots: { AccountRoot.defaults() }, now: now, calendar: calendar)
     }
 
     public func scanQuotas() -> [AccountQuota] {
         lock.lock(); defer { lock.unlock() }
         var out: [AccountQuota] = []
-        for root in roots {
+        for root in rootsProvider() {
             switch root.provider {
             case .codex: if let q = codexQuota(root) { out.append(q) }
             case .claudeCode: if let q = claudeQuota(root) { out.append(q) }

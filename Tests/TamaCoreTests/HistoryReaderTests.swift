@@ -148,3 +148,30 @@ final class HistoryReaderTests: XCTestCase {
         XCTAssertEqual(scan.days.first { $0.day == "2026-07-06" }?.totalTokens, 10)
     }
 }
+
+final class HistoryReaderAccountsTests: XCTestCase {
+    func test_history_totals_span_every_account_root() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("hist-acct-\(UUID().uuidString)")
+        let now = ISO8601DateFormatter.shared.date(from: "2026-06-19T12:00:00.000Z")!
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        func claudeLog(_ home: String, tokens: Int) throws {
+            let proj = root.appendingPathComponent("\(home)/projects/-p")
+            try fm.createDirectory(at: proj, withIntermediateDirectories: true)
+            let f = proj.appendingPathComponent("s.jsonl")
+            try "{\"timestamp\":\"2026-06-19T09:00:00.000Z\",\"cwd\":\"/p\",\"message\":{\"usage\":{\"input_tokens\":\(tokens),\"output_tokens\":0}}}"
+                .write(to: f, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.modificationDate: now], ofItemAtPath: f.path)
+        }
+        try claudeLog(".claude", tokens: 100)
+        try claudeLog(".claude-work", tokens: 1000)
+        let roots = [
+            AccountRoot(provider: .claudeCode, label: nil, root: root.appendingPathComponent(".claude")),
+            AccountRoot(provider: .claudeCode, label: "work", root: root.appendingPathComponent(".claude-work")),
+        ]
+        let scan = HistoryReader(roots: { roots }, now: { now }, calendar: cal).scanHistory(days: 30)
+        let today = try XCTUnwrap(scan.days.first { $0.day == "2026-06-19" })
+        XCTAssertEqual(today.totalTokens, 1100, "both accounts' tokens roll into the day total")
+        try? fm.removeItem(at: root)
+    }
+}

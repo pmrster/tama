@@ -26,18 +26,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // from normal debug builds AND release builds — it only exists when explicitly built with
         // `-Xswiftc -DTAMA_DEMO`. `--demo` then runs the full live app on synthetic data (safe to
         // screen-record); `--sleep` pairs with it for the napping state.
+        // The accounts to scan are read fresh from the settings store on every scan (off the main
+        // thread) — a value-type read of the thread-safe UserDefaults domain — so accounts added in
+        // Settings take effect immediately without recreating the readers or touching @MainActor state.
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let liveRoots: @Sendable () -> [AccountRoot] = { SettingsStore().accountRoots(home: home) }
+        let liveReader = ActiveSessionsReader(
+            roots: liveRoots,
+            geminiTmpDir: home.appendingPathComponent(".gemini/tmp"),
+            antigravityHistoryFile: home.appendingPathComponent(".gemini/antigravity-cli/history.jsonl"),
+            now: { Date() })
+        let liveHistory = HistoryReader(roots: liveRoots)
+        let liveQuotas = QuotaReader(roots: liveRoots, now: { Date() })
         #if TAMA_DEMO
         Snapshot.renderIfRequested()
         let demo = CommandLine.arguments.contains("--demo")
         if demo { Snapshot.sleepMode = CommandLine.arguments.contains("--sleep") }
-        let reader: ActivityScanning = demo ? Snapshot.MockReader() : ActiveSessionsReader(now: { Date() })
-        let quotas: QuotaScanning = demo ? Snapshot.MockQuotas() : QuotaReader()
+        let reader: ActivityScanning = demo ? Snapshot.MockReader() : liveReader
+        let quotas: QuotaScanning = demo ? Snapshot.MockQuotas() : liveQuotas
         #else
-        let reader: ActivityScanning = ActiveSessionsReader(now: { Date() })
-        let quotas: QuotaScanning = QuotaReader()
+        let reader: ActivityScanning = liveReader
+        let quotas: QuotaScanning = liveQuotas
         #endif
         let monitor = AgentMonitor(reader: reader,
-                                   historyReader: HistoryReader(),
+                                   historyReader: liveHistory,
                                    historyStore: .applicationSupport(),
                                    quotaReader: quotas)
         monitor.onNotifications = { events in

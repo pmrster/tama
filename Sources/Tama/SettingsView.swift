@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 18) {
             Text("Settings")
                 .font(.system(size: scaled(18), weight: .heavy, design: .rounded))
@@ -46,6 +47,10 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
             }
 
+            section("ACCOUNTS") {
+                AccountsSettings()
+            }
+
             section("PREVIEW") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -75,6 +80,8 @@ struct SettingsView: View {
             }
         }
         .padding(20)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Palette.panel)
     }

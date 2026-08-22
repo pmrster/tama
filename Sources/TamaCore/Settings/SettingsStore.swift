@@ -30,6 +30,7 @@ public struct SettingsStore {
         static let fontSize = "tama.fontSize"
         static let notifyAgentQuiet = "tama.notifyAgentQuiet"
         static let notifyContextHigh = "tama.notifyContextHigh"
+        static let extraAccounts = "tama.extraAccounts"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -57,5 +58,26 @@ public struct SettingsStore {
     public var notifyContextHigh: Bool {
         get { defaults.bool(forKey: Key.notifyContextHigh) }
         nonmutating set { defaults.set(newValue, forKey: Key.notifyContextHigh) }
+    }
+
+    /// Additional provider accounts — config dirs the agents were pointed at via
+    /// `CLAUDE_CONFIG_DIR` / `CODEX_HOME`. Stored as JSON; anything unreadable reads as none.
+    public var extraAccounts: [AccountRoot] {
+        get {
+            guard let s = defaults.string(forKey: Key.extraAccounts), let data = s.data(using: .utf8),
+                  let roots = try? JSONDecoder().decode([AccountRoot].self, from: data) else { return [] }
+            return roots
+        }
+        nonmutating set {
+            if let data = try? JSONEncoder().encode(newValue), let s = String(data: data, encoding: .utf8) {
+                defaults.set(s, forKey: Key.extraAccounts)
+            }
+        }
+    }
+
+    /// Every account the readers should scan: the standard `~/.claude` / `~/.codex` first, then
+    /// the user's extras in the order they were added.
+    public func accountRoots(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [AccountRoot] {
+        AccountRoot.defaults(home: home) + extraAccounts
     }
 }

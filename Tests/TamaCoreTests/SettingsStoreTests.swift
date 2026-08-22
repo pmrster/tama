@@ -54,3 +54,42 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(store.notifyContextHigh)
     }
 }
+
+final class SettingsStoreAccountsTests: XCTestCase {
+    private func freshDefaults() -> UserDefaults {
+        let suite = "tama.tests.\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: suite)!
+        d.removePersistentDomain(forName: suite)
+        return d
+    }
+
+    func test_extra_accounts_round_trip_and_keep_order() {
+        let store = SettingsStore(defaults: freshDefaults())
+        XCTAssertEqual(store.extraAccounts, [])
+        let work = AccountRoot(provider: .claudeCode, label: "work", root: URL(fileURLWithPath: "/Users/x/.claude-work"))
+        let cx = AccountRoot(provider: .codex, label: "B", root: URL(fileURLWithPath: "/Users/x/codex-b"))
+        store.extraAccounts = [work, cx]
+        XCTAssertEqual(store.extraAccounts, [work, cx])
+        XCTAssertEqual(store.extraAccounts[0].configFile, URL(fileURLWithPath: "/Users/x/.claude-work/.claude.json"),
+                       "an extra Claude root keeps its .claude.json INSIDE the dir (CLAUDE_CONFIG_DIR semantics)")
+    }
+
+    func test_corrupt_stored_accounts_fall_back_to_none() {
+        let d = freshDefaults()
+        d.set("not json", forKey: "tama.extraAccounts")
+        XCTAssertEqual(SettingsStore(defaults: d).extraAccounts, [])
+    }
+
+    func test_account_roots_are_defaults_plus_extras() {
+        let store = SettingsStore(defaults: freshDefaults())
+        let home = URL(fileURLWithPath: "/Users/x")
+        let work = AccountRoot(provider: .claudeCode, label: "work", root: URL(fileURLWithPath: "/Users/x/.claude-work"))
+        store.extraAccounts = [work]
+        let roots = store.accountRoots(home: home)
+        XCTAssertEqual(roots.count, 3)
+        XCTAssertEqual(roots[0], AccountRoot(provider: .claudeCode, label: nil, root: home.appendingPathComponent(".claude"),
+                                             configFile: home.appendingPathComponent(".claude.json")))
+        XCTAssertEqual(roots[1], AccountRoot(provider: .codex, label: nil, root: home.appendingPathComponent(".codex")))
+        XCTAssertEqual(roots[2], work)
+    }
+}

@@ -489,3 +489,63 @@ final class ActiveSessionsReaderTests: XCTestCase {
         try? fm.removeItem(at: root)
     }
 }
+
+final class ActiveSessionsReaderAccountsTests: XCTestCase {
+    func test_sessions_from_extra_roots_are_tagged_with_their_account_label_and_totals_include_them() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("accounts-\(UUID().uuidString)")
+        let now = ISO8601DateFormatter.shared.date(from: "2026-06-19T12:00:00.000Z")!
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        func claudeLog(_ home: String, tokens: Int) throws {
+            let proj = root.appendingPathComponent("\(home)/projects/-Example-Code-myapp")
+            try fm.createDirectory(at: proj, withIntermediateDirectories: true)
+            let f = proj.appendingPathComponent("s.jsonl")
+            try "{\"timestamp\":\"2026-06-19T09:00:00.000Z\",\"cwd\":\"/Example/Code/myapp\",\"message\":{\"usage\":{\"input_tokens\":\(tokens),\"output_tokens\":0}}}"
+                .write(to: f, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.modificationDate: now], ofItemAtPath: f.path)
+        }
+        try claudeLog("home/.claude", tokens: 100)
+        try claudeLog("home/.claude-work", tokens: 1000)
+        let codexDay = root.appendingPathComponent("home/codex-b/sessions/2026/06/19")
+        try fm.createDirectory(at: codexDay, withIntermediateDirectories: true)
+        let cx = codexDay.appendingPathComponent("rollout-2026-06-19T08-00-00-019eddab-x.jsonl")
+        try ["{\"timestamp\":\"2026-06-19T08:00:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"019eddab\",\"cwd\":\"/Example/Code/widget\"}}",
+             "{\"timestamp\":\"2026-06-19T08:05:00.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":50,\"cached_input_tokens\":0,\"output_tokens\":5,\"total_tokens\":55}}}}"]
+            .joined(separator: "\n").write(to: cx, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.modificationDate: now], ofItemAtPath: cx.path)
+
+        let roots = [
+            AccountRoot(provider: .claudeCode, label: nil, root: root.appendingPathComponent("home/.claude")),
+            AccountRoot(provider: .claudeCode, label: "work", root: root.appendingPathComponent("home/.claude-work")),
+            AccountRoot(provider: .codex, label: "B", root: root.appendingPathComponent("home/codex-b")),
+        ]
+        let reader = ActiveSessionsReader(roots: { roots }, now: { now }, calendar: cal)
+        let activity = reader.scan()
+        let claude = activity.sessions.filter { $0.provider == .claudeCode }.sorted { $0.tokens < $1.tokens }
+        XCTAssertEqual(claude.map { $0.account }, [nil, "work"])
+        XCTAssertEqual(activity.totals[.claudeCode], 1100, "provider total spans every account")
+        let codex = try XCTUnwrap(activity.sessions.first { $0.provider == .codex })
+        XCTAssertEqual(codex.account, "B")
+        XCTAssertNotEqual(claude[0].id, claude[1].id, "same folder in two accounts must not collide")
+        try? fm.removeItem(at: root)
+    }
+
+    func test_roots_closure_is_consulted_on_every_scan() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("accounts-\(UUID().uuidString)")
+        let now = ISO8601DateFormatter.shared.date(from: "2026-06-19T12:00:00.000Z")!
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let proj = root.appendingPathComponent("x/projects/-p")
+        try fm.createDirectory(at: proj, withIntermediateDirectories: true)
+        let f = proj.appendingPathComponent("s.jsonl")
+        try "{\"timestamp\":\"2026-06-19T09:00:00.000Z\",\"cwd\":\"/p\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}"
+            .write(to: f, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.modificationDate: now], ofItemAtPath: f.path)
+        nonisolated(unsafe) var roots: [AccountRoot] = []
+        let reader = ActiveSessionsReader(roots: { roots }, now: { now }, calendar: cal)
+        XCTAssertTrue(reader.scan().sessions.isEmpty)
+        roots = [AccountRoot(provider: .claudeCode, label: "x", root: root.appendingPathComponent("x"))]
+        XCTAssertEqual(reader.scan().sessions.count, 1, "a root added in Settings shows up without restarting")
+        try? fm.removeItem(at: root)
+    }
+}

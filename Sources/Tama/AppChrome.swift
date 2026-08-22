@@ -167,7 +167,7 @@ enum SettingsPanel {
         let p = panel ?? makePanel()
         panel = p
         p.contentViewController = NSHostingController(rootView: SettingsView())
-        p.setContentSize(NSSize(width: 320, height: 380))
+        p.setContentSize(NSSize(width: 340, height: 500))
         p.center()
         NSApp.activate(ignoringOtherApps: true)
         p.makeKeyAndOrderFront(nil)

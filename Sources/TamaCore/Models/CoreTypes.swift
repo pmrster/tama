@@ -136,6 +136,7 @@ public struct SessionInfo: Sendable, Equatable, Identifiable {
     public let provider: Provider
     public let project: String       // folder basename, e.g. "tama-widget"
     public let folder: String        // full path, e.g. "/Example/Code/tama-widget"
+    public let account: String?      // account label when it comes from an extra config dir; nil = default
     public let lastActivity: Date
     public let tokens: Int           // today's CUMULATIVE tokens for THIS session (incl. cache)
     public let cacheTokens: Int      // the cache portion of `tokens`
@@ -162,13 +163,13 @@ public struct SessionInfo: Sendable, Equatable, Identifiable {
     }
     /// What to show as the session's name: its title if it has one, else the short id.
     public var displayName: String { title ?? sessionId ?? "session" }
-    public var id: String { "\(provider.rawValue):\(folder):\(sessionId ?? "")" }
-    public init(provider: Provider, project: String, folder: String, lastActivity: Date,
+    public var id: String { "\(provider.rawValue):\(account ?? ""):\(folder):\(sessionId ?? "")" }
+    public init(provider: Provider, project: String, folder: String, account: String? = nil, lastActivity: Date,
                 tokens: Int = 0, cacheTokens: Int = 0, contextTokens: Int = 0, contextWindow: Int = 0,
                 model: String? = nil, sessionId: String? = nil, title: String? = nil,
                 breakdown: TokenBreakdown = TokenBreakdown(), messages: Int = 0) {
         self.provider = provider; self.project = project
-        self.folder = folder; self.lastActivity = lastActivity
+        self.folder = folder; self.account = account; self.lastActivity = lastActivity
         self.tokens = tokens; self.cacheTokens = cacheTokens
         self.contextTokens = contextTokens; self.contextWindow = contextWindow
         self.model = model; self.sessionId = sessionId; self.title = title
