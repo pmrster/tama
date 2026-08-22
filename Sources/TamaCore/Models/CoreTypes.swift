@@ -191,12 +191,16 @@ public struct AppState: Sendable, Equatable {
     /// Claude-only weekday×hour token grid (168, index (weekday-1)*24+hour), for the heatmap.
     /// Live from the last history scan — never persisted; `[]` when no history reader.
     public let hourlyActivity: [Int]
+    /// Plan limits (session / weekly utilisation) per provider account, from `QuotaReader`.
+    /// Empty when the monitor was built without a quota reader or nothing is known yet.
+    public let quotas: [AccountQuota]
     public init(sessions: [AgentSession], usage: [Provider: UsageStats], lastUpdated: Date,
                 activeSessions: [SessionInfo] = [], mood: Mood = .napping,
-                ollama: OllamaStatus? = nil, history: [DayUsage] = [], hourlyActivity: [Int] = []) {
+                ollama: OllamaStatus? = nil, history: [DayUsage] = [], hourlyActivity: [Int] = [],
+                quotas: [AccountQuota] = []) {
         self.sessions = sessions; self.usage = usage; self.lastUpdated = lastUpdated
         self.activeSessions = activeSessions; self.mood = mood; self.ollama = ollama
-        self.history = history; self.hourlyActivity = hourlyActivity
+        self.history = history; self.hourlyActivity = hourlyActivity; self.quotas = quotas
     }
     public static let empty = AppState(sessions: [], usage: [:], lastUpdated: .distantPast)
 }

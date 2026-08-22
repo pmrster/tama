@@ -27,6 +27,7 @@ public final class AgentMonitor: ObservableObject {
     private var catState: CatState
     private let historyReader: HistoryScanning?
     private let historyStore: HistoryStore?
+    private let quotaReader: QuotaScanning?
     private let historyRefreshInterval: TimeInterval
     private let calendar: Calendar
     private var storedHistory: [DayUsage] = []
@@ -47,7 +48,8 @@ public final class AgentMonitor: ObservableObject {
                 historyReader: HistoryScanning? = nil,
                 historyStore: HistoryStore? = nil,
                 historyRefreshInterval: TimeInterval = 3600,
-                calendar: Calendar = .current) {
+                calendar: Calendar = .current,
+                quotaReader: QuotaScanning? = nil) {
         self.reader = reader
         self.presenceScanner = presenceScanner
         self.ollamaReader = ollamaReader
@@ -61,6 +63,7 @@ public final class AgentMonitor: ObservableObject {
         self.historyStore = historyStore
         self.historyRefreshInterval = historyRefreshInterval
         self.calendar = calendar
+        self.quotaReader = quotaReader
     }
 
     /// Estimated pay-as-you-go API cost of this session's tokens today (not a subscription bill).
@@ -85,7 +88,8 @@ public final class AgentMonitor: ObservableObject {
             let history = historyDue
                 ? Self.refreshHistory(reader: historyReader, store: historyStore, now: now, calendar: calendar)
                 : nil
-            apply(activity, todayActivity: todayActivity, ollama: scanOllama(), history: history, now: now)
+            apply(activity, todayActivity: todayActivity, ollama: scanOllama(), history: history,
+                  quotas: quotaReader?.scanQuotas() ?? [], now: now)
             return
         }
         if inFlight { return }                          // skip overlapping scans
@@ -94,6 +98,7 @@ public final class AgentMonitor: ObservableObject {
         let scanOllama = self.scanOllama   // captured closures touch no main-actor state
         let historyReader = self.historyReader
         let historyStore = self.historyStore
+        let quotaReader = self.quotaReader
         let calendar = self.calendar
         ioQueue.async { [weak self] in
             let activity = reader.scan(window: window)
@@ -104,8 +109,10 @@ public final class AgentMonitor: ObservableObject {
             let history = historyDue
                 ? Self.refreshHistory(reader: historyReader, store: historyStore, now: now, calendar: calendar)
                 : nil
+            let quotas = quotaReader?.scanQuotas() ?? []
             DispatchQueue.main.async {
-                self?.apply(activity, todayActivity: todayActivity, ollama: ollama, history: history, now: now)
+                self?.apply(activity, todayActivity: todayActivity, ollama: ollama, history: history,
+                            quotas: quotas, now: now)
                 self?.inFlight = false
             }
         }
@@ -154,7 +161,7 @@ public final class AgentMonitor: ObservableObject {
     }
 
     private func apply(_ activity: Activity, todayActivity: Activity, ollama: OllamaStatus?,
-                       history: (days: [DayUsage], hourly: [Int])?, now: Date) {
+                       history: (days: [DayUsage], hourly: [Int])?, quotas: [AccountQuota], now: Date) {
         var usage: [Provider: UsageStats] = [:]
         for (provider, tokens) in activity.totals {
             // Price each model's tokens at its own tier rate, then sum. Falls back to the rolled-up
@@ -195,7 +202,7 @@ public final class AgentMonitor: ObservableObject {
         }
         state = AppState(sessions: [], usage: usage, lastUpdated: now,
                          activeSessions: activity.sessions, mood: mood, ollama: ollama,
-                         history: published, hourlyActivity: publishedHourly)
+                         history: published, hourlyActivity: publishedHourly, quotas: quotas)
         let events = notificationPolicy.evaluate(sessions: activity.sessions, now: now)
         if !events.isEmpty { onNotifications?(events) }
     }

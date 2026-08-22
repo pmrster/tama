@@ -34,6 +34,15 @@ final class SafetyNoWriteTests: XCTestCase {
              + "srv  update_slots: all slots are idle\n")
             .write(to: ollamaLogs.appendingPathComponent("server.log"), atomically: true, encoding: .utf8)
 
+        let claudeConfig = root.appendingPathComponent("claude-home/.claude.json")
+        let codexHomeDay = root.appendingPathComponent("codex-home/sessions/2026/06/19")
+        try fm.createDirectory(at: claudeConfig.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fm.createDirectory(at: codexHomeDay, withIntermediateDirectories: true)
+        try "{\"oauthAccount\":{\"accountUuid\":\"u\",\"emailAddress\":\"a@b\"},\"cachedUsageUtilization\":{\"fetchedAtMs\":1,\"utilization\":{\"five_hour\":{\"utilization\":1,\"resets_at\":null}}}}"
+            .write(to: claudeConfig, atomically: true, encoding: .utf8)
+        try "{\"timestamp\":\"2026-06-19T09:00:00.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"primary\":{\"used_percent\":5,\"window_minutes\":10080,\"resets_at\":1},\"plan_type\":\"plus\"}}}"
+            .write(to: codexHomeDay.appendingPathComponent("rollout-2026-06-19T09-00-00-bbbbbbbb-x.jsonl"), atomically: true, encoding: .utf8)
+
         let before = snapshot(root)
         let now = ISO8601DateFormatter.shared.date(from: "2026-06-19T10:00:00.000Z")!
         var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
@@ -47,6 +56,11 @@ final class SafetyNoWriteTests: XCTestCase {
                           codexSessionsDir: root.appendingPathComponent("codex"),
                           now: { now }, calendar: cal).scanHistory(days: 30)
         _ = OllamaReader(logURL: ollamaLogs.appendingPathComponent("server.log")).read()
+        _ = QuotaReader(roots: [
+            AccountRoot(provider: .claudeCode, label: nil, root: root.appendingPathComponent("claude-home"),
+                        configFile: claudeConfig),
+            AccountRoot(provider: .codex, label: nil, root: root.appendingPathComponent("codex-home")),
+        ], now: { now }, calendar: cal).scanQuotas()
 
         let after = snapshot(root)
         XCTAssertEqual(before, after, "readers must not add, remove, or modify any file")

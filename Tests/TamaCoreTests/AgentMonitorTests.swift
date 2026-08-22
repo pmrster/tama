@@ -227,3 +227,28 @@ final class AgentMonitorHistoryTests: XCTestCase {
         XCTAssertEqual(m.state.hourlyActivity, [])
     }
 }
+
+private struct StubQuotas: QuotaScanning {
+    let quotas: [AccountQuota]
+    func scanQuotas() -> [AccountQuota] { quotas }
+}
+
+@MainActor
+final class QuotaMonitorWiringTests: XCTestCase {
+    func test_refresh_publishes_quotas_from_the_quota_reader() {
+        let fixed = Date(timeIntervalSince1970: 1_000_000)
+        let q = AccountQuota(provider: .codex, label: nil, accountKey: "default", identity: nil, plan: "Plus",
+                             windows: [QuotaWindow(kind: .weekly, usedPercent: 46, resetsAt: nil)],
+                             fetchedAt: fixed, source: .codexLog)
+        let monitor = AgentMonitor(reader: MockScanner(activity: .empty), now: { fixed },
+                                   runsInBackground: false, quotaReader: StubQuotas(quotas: [q]))
+        monitor.refresh()
+        XCTAssertEqual(monitor.state.quotas, [q])
+    }
+
+    func test_no_quota_reader_means_no_quotas() {
+        let monitor = AgentMonitor(reader: MockScanner(activity: .empty), now: { Date() }, runsInBackground: false)
+        monitor.refresh()
+        XCTAssertTrue(monitor.state.quotas.isEmpty)
+    }
+}
