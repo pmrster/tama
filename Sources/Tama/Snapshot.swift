@@ -95,10 +95,32 @@ enum Snapshot {
         }
     }
 
+    /// Mock plan limits for demo/screenshot builds: two Claude accounts (one fresh, one via the
+    /// stale config cache) and a Codex Plus account — exercises every gauge state.
+    struct MockQuotas: QuotaScanning {
+        func scanQuotas() -> [AccountQuota] {
+            let now = Date()
+            return [
+                AccountQuota(provider: .claudeCode, label: nil, accountKey: "a", identity: "dev@example.com", plan: "Max 5x",
+                             windows: [QuotaWindow(kind: .session, usedPercent: 37, resetsAt: now.addingTimeInterval(2 * 3600 + 600)),
+                                       QuotaWindow(kind: .weekly, usedPercent: 72, resetsAt: now.addingTimeInterval(3 * 86400 + 4 * 3600))],
+                             fetchedAt: now.addingTimeInterval(-40), source: .claudeStatusline),
+                AccountQuota(provider: .claudeCode, label: "work", accountKey: "b", identity: "me@work.example", plan: "Team",
+                             windows: [QuotaWindow(kind: .session, usedPercent: 0, resetsAt: nil),
+                                       QuotaWindow(kind: .weekly, usedPercent: 12, resetsAt: now.addingTimeInterval(5 * 86400))],
+                             fetchedAt: now.addingTimeInterval(-26 * 3600), source: .claudeConfigCache),
+                AccountQuota(provider: .codex, label: nil, accountKey: "default", identity: nil, plan: "Plus",
+                             windows: [QuotaWindow(kind: .weekly, usedPercent: 46, resetsAt: now.addingTimeInterval(5 * 86400 + 15 * 3600))],
+                             fetchedAt: now.addingTimeInterval(-300), source: .codexLog),
+            ]
+        }
+    }
+
     /// Demo monitor: mock sessions plus a mock running Ollama server, so the local-model tile shows.
     @MainActor static func demoMonitor() -> AgentMonitor {
         AgentMonitor(reader: MockReader(), runsInBackground: false,
-                     presenceScanner: MockOllamaPresence(), ollamaReader: MockOllama())
+                     presenceScanner: MockOllamaPresence(), ollamaReader: MockOllama(),
+                     quotaReader: MockQuotas())
     }
 
     @MainActor

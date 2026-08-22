@@ -31,12 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let demo = CommandLine.arguments.contains("--demo")
         if demo { Snapshot.sleepMode = CommandLine.arguments.contains("--sleep") }
         let reader: ActivityScanning = demo ? Snapshot.MockReader() : ActiveSessionsReader(now: { Date() })
+        let quotas: QuotaScanning = demo ? Snapshot.MockQuotas() : QuotaReader()
         #else
         let reader: ActivityScanning = ActiveSessionsReader(now: { Date() })
+        let quotas: QuotaScanning = QuotaReader()
         #endif
         let monitor = AgentMonitor(reader: reader,
                                    historyReader: HistoryReader(),
-                                   historyStore: .applicationSupport())
+                                   historyStore: .applicationSupport(),
+                                   quotaReader: quotas)
         monitor.onNotifications = { events in
             let s = AppSettings.shared
             let allowed = events.filter {

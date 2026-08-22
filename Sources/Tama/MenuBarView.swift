@@ -169,6 +169,7 @@ struct DashboardView: View {
                 .padding(.top, 2).padding(.bottom, 6)
             Divider().overlay(Palette.panelEdge)
             UsageSection(monitor: monitor)
+            LimitsStrip(monitor: monitor)
             Divider().overlay(Palette.panelEdge)
             tree
             Divider().overlay(Palette.panelEdge)
