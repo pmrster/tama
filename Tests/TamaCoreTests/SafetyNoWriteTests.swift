@@ -42,6 +42,10 @@ final class SafetyNoWriteTests: XCTestCase {
             .write(to: claudeConfig, atomically: true, encoding: .utf8)
         try "{\"timestamp\":\"2026-06-19T09:00:00.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"primary\":{\"used_percent\":5,\"window_minutes\":10080,\"resets_at\":1},\"plan_type\":\"plus\"}}}"
             .write(to: codexHomeDay.appendingPathComponent("rollout-2026-06-19T09-00-00-bbbbbbbb-x.jsonl"), atomically: true, encoding: .utf8)
+        let statusDir = root.appendingPathComponent("statusline")
+        try fm.createDirectory(at: statusDir, withIntermediateDirectories: true)
+        try "{\"rate_limits\":{\"five_hour\":{\"used_percentage\":10,\"resets_at\":1},\"seven_day\":{\"used_percentage\":20,\"resets_at\":2}}}"
+            .write(to: statusDir.appendingPathComponent("default.json"), atomically: true, encoding: .utf8)
 
         let before = snapshot(root)
         let now = ISO8601DateFormatter.shared.date(from: "2026-06-19T10:00:00.000Z")!
@@ -60,7 +64,7 @@ final class SafetyNoWriteTests: XCTestCase {
             AccountRoot(provider: .claudeCode, label: nil, root: root.appendingPathComponent("claude-home"),
                         configFile: claudeConfig),
             AccountRoot(provider: .codex, label: nil, root: root.appendingPathComponent("codex-home")),
-        ], now: { now }, calendar: cal).scanQuotas()
+        ], statuslineDir: root.appendingPathComponent("statusline"), now: { now }, calendar: cal).scanQuotas()
 
         let after = snapshot(root)
         XCTAssertEqual(before, after, "readers must not add, remove, or modify any file")

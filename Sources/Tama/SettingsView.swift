@@ -51,6 +51,10 @@ struct SettingsView: View {
                 AccountsSettings()
             }
 
+            section("CLAUDE LIVE LIMITS (BRIDGE)") {
+                StatuslineBridgeSettings()
+            }
+
             section("PREVIEW") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {

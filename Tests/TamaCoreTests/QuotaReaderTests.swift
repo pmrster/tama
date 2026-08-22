@@ -189,3 +189,72 @@ final class QuotaReaderTests: XCTestCase {
         try? fm.removeItem(at: root)
     }
 }
+
+extension QuotaReaderTests {
+    private func bridge(five: Double, fiveResets: Int, seven: Double, sevenResets: Int) -> String {
+        "{\"workspace\":{\"current_dir\":\"/x\"},\"model\":{\"id\":\"claude\"},"
+        + "\"rate_limits\":{\"five_hour\":{\"used_percentage\":\(five),\"resets_at\":\(fiveResets)},"
+        + "\"seven_day\":{\"used_percentage\":\(seven),\"resets_at\":\(sevenResets)}}}"
+    }
+
+    func test_statusline_bridge_supplies_live_windows_and_keeps_identity_from_the_config() throws {
+        let root = try makeRoot()
+        let cfg = root.appendingPathComponent(".claude.json")
+        try claudeConfig.write(to: cfg, atomically: true, encoding: .utf8)   // fetchedAt = 2026-08-21 (stale)
+        let sl = root.appendingPathComponent("statusline")
+        try FileManager.default.createDirectory(at: sl, withIntermediateDirectories: true)
+        let file = sl.appendingPathComponent("default.json")
+        try bridge(five: 30, fiveResets: 1787900000, seven: 55, sevenResets: 1787930295)
+            .write(to: file, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: date("2026-08-22T11:59:00.000Z")], ofItemAtPath: file.path)
+
+        let reader = QuotaReader(roots: [AccountRoot(provider: .claudeCode, label: nil, root: root, configFile: cfg)],
+                                 statuslineDir: sl, now: { self.date("2026-08-22T12:00:00.000Z") }, calendar: cal)
+        let q = try XCTUnwrap(reader.scanQuotas().first)
+        XCTAssertEqual(q.source, .claudeStatusline, "the fresh bridge wins over the stale cache")
+        XCTAssertEqual(q.identity, "dev@example.com", "identity still comes from .claude.json")
+        XCTAssertEqual(q.plan, "Max 5x")
+        XCTAssertEqual(q.fetchedAt, date("2026-08-22T11:59:00.000Z"))
+        XCTAssertEqual(q.windows, [
+            QuotaWindow(kind: .session, usedPercent: 30, resetsAt: Date(timeIntervalSince1970: 1787900000)),
+            QuotaWindow(kind: .weekly, usedPercent: 55, resetsAt: Date(timeIntervalSince1970: 1787930295)),
+        ])
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    func test_stale_bridge_does_not_override_a_fresher_cache() throws {
+        let root = try makeRoot()
+        let cfg = root.appendingPathComponent(".claude.json")
+        // Cache fetched now; bridge is a week old → cache wins.
+        let freshCache = claudeConfig.replacingOccurrences(of: "\"fetchedAtMs\":1787329931540",
+                                                           with: "\"fetchedAtMs\":1787486400000")   // 2026-08-23
+        try freshCache.write(to: cfg, atomically: true, encoding: .utf8)
+        let sl = root.appendingPathComponent("statusline")
+        try FileManager.default.createDirectory(at: sl, withIntermediateDirectories: true)
+        let file = sl.appendingPathComponent("default.json")
+        try bridge(five: 30, fiveResets: 1, seven: 55, sevenResets: 2).write(to: file, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: date("2026-08-15T00:00:00.000Z")], ofItemAtPath: file.path)
+        let reader = QuotaReader(roots: [AccountRoot(provider: .claudeCode, label: nil, root: root, configFile: cfg)],
+                                 statuslineDir: sl, now: { self.date("2026-08-23T12:00:00.000Z") }, calendar: cal)
+        let q = try XCTUnwrap(reader.scanQuotas().first)
+        XCTAssertEqual(q.source, .claudeConfigCache)
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    func test_bridge_matches_account_by_label() throws {
+        let root = try makeRoot()
+        let cfg = root.appendingPathComponent(".claude.json")
+        try claudeConfig.write(to: cfg, atomically: true, encoding: .utf8)
+        let sl = root.appendingPathComponent("statusline")
+        try FileManager.default.createDirectory(at: sl, withIntermediateDirectories: true)
+        // A bridge file named for a DIFFERENT label must not attach to this default account.
+        let other = sl.appendingPathComponent("work.json")
+        try bridge(five: 99, fiveResets: 1, seven: 99, sevenResets: 2).write(to: other, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: date("2026-08-22T11:59:00.000Z")], ofItemAtPath: other.path)
+        let reader = QuotaReader(roots: [AccountRoot(provider: .claudeCode, label: nil, root: root, configFile: cfg)],
+                                 statuslineDir: sl, now: { self.date("2026-08-22T12:00:00.000Z") }, calendar: cal)
+        let q = try XCTUnwrap(reader.scanQuotas().first)
+        XCTAssertEqual(q.source, .claudeConfigCache, "a mismatched-label bridge file is ignored for this account")
+        try? FileManager.default.removeItem(at: root)
+    }
+}

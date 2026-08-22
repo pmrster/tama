@@ -17,6 +17,7 @@ public protocol QuotaScanning: Sendable {
 /// Parsing is cached per file by (mtime, size). Strictly read-only.
 public final class QuotaReader: QuotaScanning, @unchecked Sendable {
     private let rootsProvider: () -> [AccountRoot]
+    private let statuslineDir: URL?
     private let now: () -> Date
     private let calendar: Calendar
 
@@ -34,19 +35,33 @@ public final class QuotaReader: QuotaScanning, @unchecked Sendable {
     private let lock = NSLock()
 
     /// `roots` is consulted on every scan so accounts added in Settings take effect at once.
-    public init(roots: @escaping () -> [AccountRoot], now: @escaping () -> Date, calendar: Calendar = .current) {
+    /// `statuslineDir` (opt-in bridge) holds per-account `<label>.json` files a user's Claude Code
+    /// statusline command writes with the live `rate_limits` block; when one is fresher than the
+    /// cached snapshot for its account, its windows win.
+    public init(roots: @escaping () -> [AccountRoot], statuslineDir: URL? = nil,
+                now: @escaping () -> Date, calendar: Calendar = .current) {
         self.rootsProvider = roots
+        self.statuslineDir = statuslineDir
         self.now = now
         self.calendar = calendar
     }
 
     /// Fixed-roots convenience (tests).
-    public convenience init(roots: [AccountRoot], now: @escaping () -> Date, calendar: Calendar = .current) {
-        self.init(roots: { roots }, now: now, calendar: calendar)
+    public convenience init(roots: [AccountRoot], statuslineDir: URL? = nil,
+                            now: @escaping () -> Date, calendar: Calendar = .current) {
+        self.init(roots: { roots }, statuslineDir: statuslineDir, now: now, calendar: calendar)
     }
 
     public convenience init(now: @escaping () -> Date = { Date() }, calendar: Calendar = .current) {
-        self.init(roots: { AccountRoot.defaults() }, now: now, calendar: calendar)
+        self.init(roots: { AccountRoot.defaults() }, statuslineDir: Self.defaultStatuslineDir(),
+                  now: now, calendar: calendar)
+    }
+
+    /// `~/Library/Application Support/Tama/statusline` — where the opt-in bridge files live.
+    public static func defaultStatuslineDir(
+        appSupport: URL? = try? FileManager.default.url(for: .applicationSupportDirectory,
+                                                        in: .userDomainMask, appropriateFor: nil, create: false)) -> URL? {
+        appSupport?.appendingPathComponent("Tama/statusline")
     }
 
     public func scanQuotas() -> [AccountQuota] {
@@ -153,9 +168,41 @@ public final class QuotaReader: QuotaScanning, @unchecked Sendable {
 
     private func claudeQuota(_ root: AccountRoot) -> AccountQuota? {
         guard let cfg = root.configFile, let snap = cachedClaude(cfg) else { return nil }
+        // Opt-in bridge: a `<label>.json` (default → "default.json") the statusline command writes.
+        // When it's newer than the cached snapshot, its live windows replace the cached ones;
+        // identity/plan still come from `.claude.json` (the bridge JSON carries neither).
+        if let bridge = statuslineBridge(label: root.label), bridge.fetchedAt > snap.fetchedAt {
+            return AccountQuota(provider: .claudeCode, label: root.label, accountKey: snap.accountKey,
+                                identity: snap.identity, plan: snap.plan, windows: bridge.windows,
+                                fetchedAt: bridge.fetchedAt, source: .claudeStatusline)
+        }
         return AccountQuota(provider: .claudeCode, label: root.label, accountKey: snap.accountKey,
                             identity: snap.identity, plan: snap.plan, windows: snap.windows,
                             fetchedAt: snap.fetchedAt, source: .claudeConfigCache)
+    }
+
+    private func statuslineBridge(label: String?) -> (windows: [QuotaWindow], fetchedAt: Date)? {
+        guard let dir = statuslineDir else { return nil }
+        let file = dir.appendingPathComponent("\(label ?? "default").json")
+        guard let vals = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+              let mtime = vals.contentModificationDate,
+              let windows = Self.parseStatusline(SafeFileReader.data(at: file, maxBytes: 1_048_576)),
+              !windows.isEmpty else { return nil }
+        return (windows, mtime)
+    }
+
+    /// The documented Claude Code status-line `rate_limits` block:
+    /// `{ five_hour:{used_percentage, resets_at(epoch s)}, seven_day:{…} }`.
+    static func parseStatusline(_ data: Data?) -> [QuotaWindow]? {
+        guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rl = obj["rate_limits"] as? [String: Any] else { return nil }
+        func window(_ key: String, _ kind: QuotaWindow.Kind) -> QuotaWindow? {
+            guard let w = rl[key] as? [String: Any],
+                  let used = Self.number(w["used_percentage"]) ?? Self.number(w["used_percent"]) else { return nil }
+            return QuotaWindow(kind: kind, usedPercent: used,
+                               resetsAt: Self.number(w["resets_at"]).map { Date(timeIntervalSince1970: $0) })
+        }
+        return [window("five_hour", .session), window("seven_day", .weekly)].compactMap { $0 }
     }
 
     private func cachedClaude(_ file: URL) -> ClaudeSnapshot? {

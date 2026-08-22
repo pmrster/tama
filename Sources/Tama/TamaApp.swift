@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             antigravityHistoryFile: home.appendingPathComponent(".gemini/antigravity-cli/history.jsonl"),
             now: { Date() })
         let liveHistory = HistoryReader(roots: liveRoots)
-        let liveQuotas = QuotaReader(roots: liveRoots, now: { Date() })
+        let liveQuotas = QuotaReader(roots: liveRoots, statuslineDir: QuotaReader.defaultStatuslineDir(), now: { Date() })
         #if TAMA_DEMO
         Snapshot.renderIfRequested()
         let demo = CommandLine.arguments.contains("--demo")

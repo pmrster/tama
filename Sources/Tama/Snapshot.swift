@@ -215,7 +215,7 @@ enum Snapshot {
         // the matching option (Light/Dark) rather than always showing "System".
         for (tag, ap) in appearances {
             AppSettings.shared.appearance = (tag == "dark") ? .dark : .light
-            write(renderPNG(SettingsView().frame(width: 320, height: 380), appearance: ap),
+            write(renderPNG(SettingsView().frame(width: 340, height: 500), appearance: ap),
                   "settings-\(tag).png")
         }
         AppSettings.shared.appearance = .system
