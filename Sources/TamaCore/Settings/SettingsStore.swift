@@ -31,6 +31,8 @@ public struct SettingsStore {
         static let notifyAgentQuiet = "tama.notifyAgentQuiet"
         static let notifyContextHigh = "tama.notifyContextHigh"
         static let extraAccounts = "tama.extraAccounts"
+        static let showLimits = "tama.showLimits"
+        static let limitsCollapsed = "tama.limitsCollapsed"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -58,6 +60,20 @@ public struct SettingsStore {
     public var notifyContextHigh: Bool {
         get { defaults.bool(forKey: Key.notifyContextHigh) }
         nonmutating set { defaults.set(newValue, forKey: Key.notifyContextHigh) }
+    }
+
+    /// Whether the plan-limits (session/weekly quota) section is shown at all. On by default;
+    /// turning it off hides the whole section regardless of collapse state.
+    public var showLimits: Bool {
+        get { defaults.object(forKey: Key.showLimits) as? Bool ?? true }
+        nonmutating set { defaults.set(newValue, forKey: Key.showLimits) }
+    }
+
+    /// Whether the plan-limits section is collapsed to just its header. Off by default; persisted
+    /// so a user who collapses it keeps it that way across launches.
+    public var limitsCollapsed: Bool {
+        get { defaults.bool(forKey: Key.limitsCollapsed) }
+        nonmutating set { defaults.set(newValue, forKey: Key.limitsCollapsed) }
     }
 
     /// Additional provider accounts — config dirs the agents were pointed at via

@@ -29,6 +29,20 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.fontSize, .large)
     }
 
+    func test_show_limits_defaults_on_and_round_trips() {
+        let store = SettingsStore(defaults: freshDefaults())
+        XCTAssertTrue(store.showLimits, "the plan-limits section is shown by default")
+        store.showLimits = false
+        XCTAssertFalse(store.showLimits)
+    }
+
+    func test_limits_collapsed_defaults_off_and_round_trips() {
+        let store = SettingsStore(defaults: freshDefaults())
+        XCTAssertFalse(store.limitsCollapsed, "expanded by default")
+        store.limitsCollapsed = true
+        XCTAssertTrue(store.limitsCollapsed)
+    }
+
     func test_unknown_raw_string_falls_back_to_default() {
         let d = freshDefaults()
         d.set("nonsense", forKey: "tama.appearance")

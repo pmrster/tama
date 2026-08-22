@@ -33,6 +33,11 @@ final class AppSettings: ObservableObject {
     /// The readers re-read these from the store on each scan; publishing here is only for the UI.
     @Published var extraAccounts: [AccountRoot] { didSet { store.extraAccounts = extraAccounts } }
 
+    /// Whether the plan-limits section shows at all (Settings toggle).
+    @Published var showLimits: Bool { didSet { store.showLimits = showLimits } }
+    /// Whether the plan-limits section is collapsed to its header (header chevron).
+    @Published var limitsCollapsed: Bool { didSet { store.limitsCollapsed = limitsCollapsed } }
+
     init(store: SettingsStore = SettingsStore()) {
         self.store = store
         self.appearance = store.appearance
@@ -40,6 +45,8 @@ final class AppSettings: ObservableObject {
         self.notifyAgentQuiet = store.notifyAgentQuiet
         self.notifyContextHigh = store.notifyContextHigh
         self.extraAccounts = store.extraAccounts
+        self.showLimits = store.showLimits
+        self.limitsCollapsed = store.limitsCollapsed
     }
 
     /// nil = follow the OS; otherwise force light/dark. Used by SwiftUI previews/snapshots.

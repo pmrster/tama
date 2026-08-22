@@ -9,17 +9,38 @@ import TamaCore
 /// section (and its leading divider) disappear entirely when no quota is known.
 struct LimitsStrip: View {
     @ObservedObject var monitor: AgentMonitor
+    @ObservedObject private var settings = AppSettings.shared
 
     private var now: Date { monitor.state.lastUpdated }
+    private var collapsed: Bool { settings.limitsCollapsed }
 
     var body: some View {
-        if !monitor.state.quotas.isEmpty {
+        if settings.showLimits && !monitor.state.quotas.isEmpty {
             Divider().overlay(Palette.panelEdge)
             VStack(alignment: .leading, spacing: 9) {
-                Text("LIMITS")
-                    .font(.system(size: scaled(10), weight: .heavy)).tracking(1)
-                    .foregroundStyle(Palette.dim)
-                ForEach(monitor.state.quotas) { account($0) }
+                Button {
+                    settings.limitsCollapsed.toggle()
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: scaled(8), weight: .bold)).foregroundStyle(Palette.dim)
+                        Text("LIMITS")
+                            .font(.system(size: scaled(10), weight: .heavy)).tracking(1)
+                            .foregroundStyle(Palette.dim)
+                        Spacer(minLength: 8)
+                        if collapsed {
+                            Text("\(monitor.state.quotas.count) account\(monitor.state.quotas.count == 1 ? "" : "s")")
+                                .font(.system(size: scaled(9), design: .monospaced)).foregroundStyle(Palette.dim)
+                                .fixedSize()
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(collapsed ? "Show plan limits" : "Collapse plan limits (hide entirely in Settings)")
+                if !collapsed {
+                    ForEach(monitor.state.quotas) { account($0) }
+                }
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)

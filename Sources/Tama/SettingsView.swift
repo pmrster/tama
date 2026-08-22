@@ -47,6 +47,14 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
             }
 
+            section("PLAN LIMITS") {
+                Toggle(isOn: $settings.showLimits) {
+                    Text("Show the plan-limits section (session / weekly quota)")
+                        .font(.system(size: scaled(12))).foregroundStyle(Palette.text)
+                }
+                .toggleStyle(.switch)
+            }
+
             section("ACCOUNTS") {
                 AccountsSettings()
             }
