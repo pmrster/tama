@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- **Plan limits (session / weekly quota) per account.** A new strip under the usage tiles shows,
+## 0.5.0 — 2026-08-23
+
+- **Plan limits (session / weekly quota) per account.** A new **LIMITS** section shows,
   per provider account, how much of your subscription's **5-hour** and **weekly** limit is used,
   with a reset countdown — read from what the agents already leave on disk (no network, no
   credentials). **Codex** limits come straight from its per-turn `rate_limits` in the session log
@@ -15,6 +17,8 @@
 - **Optional live Claude limits.** Claude Code only streams its live 5h/weekly numbers to your
   statusline. Settings shows a one-line "bridge" you can add to your statusLine that mirrors that
   data into a file Tama reads, upgrading the Claude rows from the cached snapshot to live figures.
+- The LIMITS section can be **collapsed** from its header or **hidden** entirely from
+  **Settings → Plan Limits**; both preferences persist.
 
 ## 0.4.0 — 2026-07-12
 
