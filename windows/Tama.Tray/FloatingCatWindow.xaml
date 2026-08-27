@@ -25,7 +25,7 @@
           MouseLeftButtonDown="Root_MouseLeftButtonDown"
           MouseMove="Root_MouseMove"
           MouseLeftButtonUp="Root_MouseLeftButtonUp"
-          MouseLeave="Root_MouseLeave"
+          LostMouseCapture="Root_LostMouseCapture"
           MouseRightButtonUp="Root_MouseRightButtonUp">
         <!-- PetControl's own strip (spriteW + 12 wide, 34 tall) scaled 2x via LayoutTransform —
              FloatingCatPlacement.DisplayScale. NearestNeighbor on its Image keeps the pixels crisp. -->

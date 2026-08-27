@@ -30,9 +30,11 @@ namespace Tama.Tray;
 ///
 /// Drag: once the pointer travels <see cref="FloatingCatPlacement.DragThreshold"/> the press is
 /// handed to <see cref="Window.DragMove"/> (the OS move loop — the standard on-screen-keyboard
-/// recipe for NOACTIVATE windows). Manual mouse-capture dragging is deliberately NOT used: Win32
-/// grants only partial capture to a window whose thread isn't in the foreground, which is exactly
-/// this window's normal state.
+/// recipe for NOACTIVATE windows). WPF mouse capture is held only for the pre-threshold press,
+/// so a press near the widget's edge that slides outward still routes its moves/up to Root
+/// instead of being swallowed (review finding); the drag itself is never capture-driven, since
+/// Win32 grants only partial capture to a window whose thread isn't in the foreground — this
+/// window's normal state.
 /// </summary>
 public partial class FloatingCatWindow : Window
 {
@@ -137,6 +139,7 @@ public partial class FloatingCatWindow : Window
         _dragged = false;
         // Screen-space (device px) so the delta isn't distorted by the window moving under the cursor.
         _pressDevice = PointToScreen(e.GetPosition(this));
+        Root.CaptureMouse();   // keep Move/Up routed here even if the cursor slips past the edge
         e.Handled = true;
     }
 
@@ -147,6 +150,7 @@ public partial class FloatingCatWindow : Window
         if (!FloatingCatPlacement.IsDrag(delta.X, delta.Y)) return;
 
         _dragged = true;
+        Root.ReleaseMouseCapture();   // the OS move loop takes its own capture
         try
         {
             DragMove();   // OS move loop; returns once the button is released
@@ -163,13 +167,15 @@ public partial class FloatingCatWindow : Window
     {
         if (!_pressed) return;
         _pressed = false;
+        Root.ReleaseMouseCapture();
         e.Handled = true;
         if (!_dragged) _onClick(CurrentFrame);
     }
 
-    private void Root_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    private void Root_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        // Pressed at the very edge and slid out before the drag threshold: not a click.
+        // Capture taken away mid-press (a modal, another app's capture) — not a click. The
+        // explicit release before DragMove above also lands here, with _dragged already true.
         if (!_dragged) _pressed = false;
     }
 
