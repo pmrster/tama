@@ -25,7 +25,7 @@ public partial class PetControl : System.Windows.Controls.UserControl
     // such seams (adjacent same-color pixels already touch), so that overlap is intentionally not
     // reproduced here (per task-3-brief.md's own "at the bitmap level just render each cell as
     // filled pixels at an integer scale" instruction).
-    private const int RasterScale = 2;
+    private const int RasterScale = CatSprite.RasterScale;
     private const double SpriteWidth = CatSprite.GridCols * RasterScale;  // 48
     private const double SpriteHeight = CatSprite.GridRows * RasterScale; // 30
 

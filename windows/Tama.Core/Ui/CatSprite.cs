@@ -17,6 +17,10 @@ public static class CatSprite
     // cells don't show hairline seams once scaled (PetView.swift:173-178).
     public const double PixelSize = 2.0;
     public const double CellOverlap = 0.35;
+    /// <summary><see cref="PixelSize"/> as the integer raster scale PetControl bakes each grid
+    /// cell at (2 device-independent px per cell). Shared with <see cref="FloatingCatPlacement"/>
+    /// so the floating widget's size is derived from Core constants only.</summary>
+    public const int RasterScale = 2;
 
     // Traced straight from the SVG fills (PetView.swift:99-101).
     public const string BodyColorHex = "#F3BD4F";
