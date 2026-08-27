@@ -117,7 +117,14 @@ Output: `dist\installer\TamaSetup.exe`. The `.iss` script and the embedded app i
 - The tray cat sleeps when no agent has been active recently and walks while sessions
   are live. Left-click opens the dashboard popover, anchored near the tray corner; it
   closes when you click anywhere else. The theme follows Windows light/dark unless you
-  force one in Settings. The tray menu has Pin, Settings, and Quit.
+  force one in Settings. The tray menu has Open, Pin window, Show floating cat, Settings,
+  About, and Quit.
+- **The cat also floats on your desktop** — a small always-on-top pixel cat, bottom-right
+  of the primary screen by default, that never takes focus and never shows in Alt-Tab.
+  Left-click it to open the dashboard right beside it (toggle), right-click for the same
+  menu as the tray icon, drag it anywhere (the spot is remembered across restarts and
+  pulled back on-screen if that monitor is gone). Hide or show it with **Show floating
+  cat** in the tray menu or in Settings → WIDGET.
 - Sessions and token totals come from the agents' local logs, refreshed every 7 seconds:
 
   | Provider | Log location |
@@ -136,7 +143,8 @@ Output: `dist\installer\TamaSetup.exe`. The `.iss` script and the embedded app i
   cumulative today total (which includes cache re-reads, so it looks huge). Both are
   real; they are deliberately different things.
 - **Pin** turns the popover into a resizable always-on-top window; its size and
-  position survive a restart, as do the font-size (S/M/L) and theme settings.
+  position survive a restart, as do the font-size (S/M/L) and theme settings and the
+  floating cat's position/visibility (all in `%APPDATA%\Tama\settings.json`).
   **Run at login** manages a single `Tama` value under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` — toggling it off removes the
   value. **Quit** from the tray menu exits cleanly, with no leftover process in Task

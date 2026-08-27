@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Windows
+
+- **Floating desktop cat.** The pixel cat now also floats on the desktop as a small
+  always-on-top widget (bottom-right by default) — the Windows stand-in for the Mac menu-bar
+  icon. Left-click opens the dashboard popover right beside it, right-click shows the tray
+  menu, drag moves it; it never takes focus and never appears in Alt-Tab. Position and
+  visibility persist in `%APPDATA%\Tama\settings.json`; hide/show it with **Show floating
+  cat** in the tray menu or Settings → WIDGET.
+
 ## 0.5.0 — 2026-08-23
 
 - **Plan limits (session / weekly quota) per account.** A new **LIMITS** section shows,

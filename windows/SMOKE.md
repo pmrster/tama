@@ -77,6 +77,34 @@ AND `spec/log-formats.md` + the design doc table:
       off → value gone.
 - [ ] Quit from tray menu → process exits cleanly (no ghost in Task Manager).
 
+## 7. Floating cat
+
+- [ ] Fresh state (delete `%APPDATA%\Tama\settings.json` first) → launch → the pixel cat appears
+      bottom-right of the primary screen's work area (16 px inset), ~120×68, no ground line, no
+      "meow~"/z's; walks while a session is live, nap pose otherwise. Not in Alt-Tab, not in the
+      taskbar.
+- [ ] Left-click the cat → popover opens **beside it** (above; below when the cat is at the top
+      edge; left/right on a very short screen). Check at 100 % **and 125 % / 150 %** scaling — the
+      popover must be fully on-screen and hugging the cat, and the click must never activate the
+      cat (the foreground app's title bar stays lit / its caret keeps blinking).
+- [ ] With the popover open: click the desktop → popover closes; click the cat → popover closes
+      (toggle) and does NOT immediately reopen.
+- [ ] Press-and-release with < 4 px movement = click; ≥ 4 px = drag (no popover toggle). Drag
+      by the transparent corner of the 120×68 box (not just the cat's body) also works.
+- [ ] Drag to another monitor (mixed DPI if available) → quit → relaunch → same spot. Then
+      unplug that monitor → relaunch → cat clamps back onto a connected screen (or the default
+      corner) — never invisible. NOTE: if the drag activates the window (popover closes mid-drag)
+      or the cat jumps during the drag on 125 %+, report it: this is the DragMove-on-NOACTIVATE
+      risk in FloatingCatWindow.xaml.cs.
+- [ ] Right-click the cat → the tray's menu (Open / Pin window / ☑ Show floating cat / Settings /
+      About / Quit) at the cursor; clicking anywhere outside (including into another app)
+      dismisses it. If the menu STAYS open after an outside click, report it (fallback is a
+      WPF ContextMenu).
+- [ ] Toggle off via the tray item → cat disappears, tray check clears, Settings → WIDGET shows ☐.
+      Toggle on via Settings → cat reappears at its last spot, tray check set. Quit → relaunch →
+      the chosen state persists. Hidden cat → Task Manager CPU for Tama stays ~0 % (sprite timer
+      stopped).
+
 ## Results
 
 | Section | Result | Notes |
@@ -88,3 +116,4 @@ AND `spec/log-formats.md` + the design doc table:
 | 4 Ollama | | |
 | 5 Safety | | |
 | 6 Pinned + settings | | |
+| 7 Floating cat | | |

@@ -325,8 +325,9 @@ or ChatGPT subscriptions.
 
 ### Does Tama work on Windows or Linux?
 
-No. Tama is macOS-only and requires macOS 13 (Ventura) or later. It is a native
-Swift 6 / SwiftUI menu-bar app.
+The Mac app requires macOS 13 (Ventura) or later — it is a native Swift 6 / SwiftUI
+menu-bar app. A separate Windows port (tray icon + floating desktop cat, .NET 8 / WPF)
+lives under [`windows/`](windows/INSTALL.md). There is no Linux version.
 
 ## Contributing
 
