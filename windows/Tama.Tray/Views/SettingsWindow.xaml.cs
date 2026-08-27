@@ -37,6 +37,7 @@ public partial class SettingsWindow : Window
 
         BuildAppearancePicker();
         BuildFontSizePicker();
+        RenderFloatingCat();
         RenderPreview();
 
         _vm.PropertyChanged += Vm_PropertyChanged;
@@ -63,6 +64,7 @@ public partial class SettingsWindow : Window
     {
         RefreshAppearanceHighlight();
         RefreshFontSizeHighlight();
+        RenderFloatingCat();
         RenderPreview();
     }
 
@@ -107,6 +109,18 @@ public partial class SettingsWindow : Window
     }
 
     private void RefreshFontSizeHighlight() => RefreshHighlight(_fontSizeSegments, _vm.FontSize);
+
+    // ---- WIDGET: "Show floating cat" ☑/☐ (same idiom as DashboardView's launch-at-login row) ----
+
+    private void FloatingCat_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        _vm.FloatingCatVisible = !_vm.FloatingCatVisible;
+
+    private void RenderFloatingCat()
+    {
+        var on = _vm.FloatingCatVisible;
+        FloatingCatIcon.Text = on ? "☑" : "☐";
+        FloatingCatIcon.Foreground = on ? Palette.Yellow : Palette.Dim;
+    }
 
     // ---- shared segmented-control plumbing ----
 

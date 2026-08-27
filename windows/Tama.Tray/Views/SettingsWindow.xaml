@@ -3,12 +3,12 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:Tama.Tray.Views"
         Title="Tama Settings"
-        Width="320" Height="380"
+        Width="320" Height="424"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         Topmost="True"
         Background="{x:Static views:Palette.Panel}">
-    <!-- WPF port of SettingsView.swift (planc-ui-spec.md §5), hosted in a fixed 320x380,
+    <!-- WPF port of SettingsView.swift (planc-ui-spec.md §5), hosted in a fixed 320x424,
          non-resizable, always-on-top utility window (§1c) — mirrors the mac Settings NSPanel's
          shape (no `.resizable`, no auto-close-on-deactivate; see code-behind for the
          hide-not-destroy reuse pattern). Segmented pickers + the live-scaled preview row are
@@ -16,6 +16,7 @@
          AppSettingsViewModel without a converter per pixel value. -->
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -42,8 +43,22 @@
             <StackPanel x:Name="FontSizePanel" Orientation="Horizontal" />
         </StackPanel>
 
+        <!-- WIDGET (Windows-only): the floating desktop cat on/off. Same ☑/☐ idiom as the
+             dashboard footer's "Launch at login" row, driven by AppSettingsViewModel.FloatingCatVisible
+             (which the tray menu's "Show floating cat" item and the FloatingCatWindow also observe). -->
+        <StackPanel Grid.Row="3" Margin="0,0,0,18">
+            <TextBlock Text="WIDGET" FontSize="10" FontWeight="Black" Foreground="{x:Static views:Palette.Dim}"
+                       Margin="0,0,0,6" />
+            <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
+                        MouseLeftButtonDown="FloatingCat_Click">
+                <TextBlock x:Name="FloatingCatIcon" FontSize="11" VerticalAlignment="Center" />
+                <TextBlock Margin="6,0,0,0" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{x:Static views:Palette.Text}" Text="Show floating cat" />
+            </StackPanel>
+        </StackPanel>
+
         <!-- §5.4 PREVIEW: static example row rendered at the live picker values -->
-        <Border Grid.Row="3" x:Name="PreviewBox" CornerRadius="8" Padding="10">
+        <Border Grid.Row="4" x:Name="PreviewBox" CornerRadius="8" Padding="10">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="7" Height="7" Fill="{x:Static views:Palette.Yellow}" VerticalAlignment="Center"
@@ -57,7 +72,7 @@
         </Border>
 
         <!-- §5.6 Close button -->
-        <Border Grid.Row="5" HorizontalAlignment="Center" CornerRadius="8" Padding="22,7"
+        <Border Grid.Row="6" HorizontalAlignment="Center" CornerRadius="8" Padding="22,7"
                 Background="{x:Static views:Palette.CoralPill}" Cursor="Hand"
                 MouseLeftButtonDown="Close_Click">
             <TextBlock Text="Close" FontSize="12" FontWeight="SemiBold" Foreground="{x:Static views:Palette.Text}" />
