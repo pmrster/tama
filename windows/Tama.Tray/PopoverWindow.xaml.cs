@@ -1,4 +1,5 @@
 using System.Windows;
+using Tama.Core;
 using Tama.Core.Ui;
 using Tama.Tray.Views;
 
@@ -9,15 +10,20 @@ namespace Tama.Tray;
 /// Topmost while open, Deactivated closes it — the WPF analog of NSPopover's
 /// `.behavior = .transient`). Hosts the real dashboard content (spec §2/§3/§4) via
 /// <see cref="Views.DashboardView"/>; this window itself owns only the popover chrome/geometry
-/// (border, transparency, tray-corner positioning, focus-loss dismissal).
+/// (border, transparency, tray-corner / beside-the-cat positioning, focus-loss dismissal).
 /// </summary>
 public partial class PopoverWindow : Window
 {
     private bool _closing;
+    private readonly WindowFrame? _anchor;
 
-    public PopoverWindow(DashboardViewModel vm, Action onAbout, Action onQuit, Action onPin, double fontScale = 1.0)
+    /// <param name="anchor">When summoned from the floating cat: its logical frame, so the popover
+    /// opens beside it (<see cref="PopoverAnchor"/>) instead of at the tray corner.</param>
+    public PopoverWindow(DashboardViewModel vm, Action onAbout, Action onQuit, Action onPin, double fontScale = 1.0,
+        WindowFrame? anchor = null)
     {
         InitializeComponent();
+        _anchor = anchor;
 
         // No retint call here on purpose: Palette's brushes are process-wide statics, already
         // set to the correct color by AppSettingsViewModel (once at startup, again live on every
@@ -28,7 +34,7 @@ public partial class PopoverWindow : Window
         Dashboard.Initialize(vm, onAbout, onQuit, onPin, fontScale: fontScale);
 
         Deactivated += (_, _) => { if (!_closing) Close(); };
-        Loaded += (_, _) => PositionNearTray();
+        Loaded += (_, _) => { if (_anchor is { } a) PositionBesideAnchor(a); else PositionNearTray(); };
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -74,5 +80,28 @@ public partial class PopoverWindow : Window
         var origin = toLogical.Transform(new System.Windows.Point(workArea.Left, workArea.Top));
         Left = Math.Max(origin.X, corner.X - Width - margin);
         Top = Math.Max(origin.Y, corner.Y - ActualHeight - margin);
+    }
+
+    /// <summary>Positions the popover beside the floating cat (<see cref="PopoverAnchor.Beside"/>:
+    /// above it when there's room, else below/left/right), inside the work area of the monitor
+    /// the cat is on. Same physical→logical conversion as <see cref="PositionNearTray"/>; the
+    /// anchor itself is already logical (WPF Left/Top of the cat window). Runs on Loaded so
+    /// SizeToContent="Height" has measured ActualHeight.</summary>
+    private void PositionBesideAnchor(WindowFrame anchor)
+    {
+        var target = PresentationSource.FromVisual(this)?.CompositionTarget;
+        var toDevice = target?.TransformToDevice ?? System.Windows.Media.Matrix.Identity;
+        var toLogical = target?.TransformFromDevice ?? System.Windows.Media.Matrix.Identity;
+
+        var center = toDevice.Transform(new System.Windows.Point(anchor.X + anchor.Width / 2, anchor.Y + anchor.Height / 2));
+        var workArea = System.Windows.Forms.Screen
+            .FromPoint(new System.Drawing.Point((int)center.X, (int)center.Y)).WorkingArea;
+        var origin = toLogical.Transform(new System.Windows.Point(workArea.Left, workArea.Top));
+        var corner = toLogical.Transform(new System.Windows.Point(workArea.Right, workArea.Bottom));
+
+        var placement = PopoverAnchor.Beside(anchor, Width, ActualHeight,
+            new WindowFrame(origin.X, origin.Y, corner.X - origin.X, corner.Y - origin.Y));
+        Left = placement.Frame.X;
+        Top = placement.Frame.Y;
     }
 }

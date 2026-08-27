@@ -13,41 +13,62 @@ namespace Tama.Tray;
 /// handler alongside a separate ContextMenuStrip, so (unlike AppKit's MenuBarExtra) no bypass is
 /// needed to get right-click working independently of left-click.
 ///
-/// Menu order mirrors task-2-brief.md: Open, Pin window, Settings, About, (separator), Quit.
-/// Pin window toggles the resizable PinnedWindow (spec §1a/§1b, task-6-brief.md). Settings is
-/// wired here (Task 5).
+/// Menu order mirrors task-2-brief.md: Open, Pin window, Show floating cat, Settings, About,
+/// (separator), Quit. Pin window toggles the resizable PinnedWindow (spec §1a/§1b,
+/// task-6-brief.md). Settings is wired here (Task 5). "Show floating cat" is a checkable item
+/// whose check state is DRIVEN from AppSettingsViewModel.FloatingCatVisible (not CheckOnClick),
+/// so the tray menu, the Settings checkbox and the window itself can never disagree. The same
+/// ContextMenuStrip instance is also what the floating cat's right-click shows
+/// (<see cref="ShowMenuAt"/>) — menu parity by construction.
 /// </summary>
 public sealed class TrayIcon : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
+    private readonly ContextMenuStrip _menu;
+    private readonly ToolStripMenuItem _floatingCatItem;
     private bool _asleep;
 
-    public TrayIcon(Action onToggle, Action onPinToggle, Action onSettings, Action onAbout, Action onQuit)
+    public TrayIcon(Action onToggle, Action onPinToggle, Action onFloatingCatToggle, Action onSettings,
+        Action onAbout, Action onQuit)
     {
         ArgumentNullException.ThrowIfNull(onToggle);
         ArgumentNullException.ThrowIfNull(onPinToggle);
+        ArgumentNullException.ThrowIfNull(onFloatingCatToggle);
         ArgumentNullException.ThrowIfNull(onSettings);
         ArgumentNullException.ThrowIfNull(onAbout);
         ArgumentNullException.ThrowIfNull(onQuit);
 
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Open", null, (_, _) => onToggle());
-        menu.Items.Add("Pin window", null, (_, _) => onPinToggle());
-        menu.Items.Add("Settings", null, (_, _) => onSettings());
-        menu.Items.Add("About", null, (_, _) => onAbout());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit", null, (_, _) => onQuit());
+        _menu = new ContextMenuStrip();
+        _menu.Items.Add("Open", null, (_, _) => onToggle());
+        _menu.Items.Add("Pin window", null, (_, _) => onPinToggle());
+        _floatingCatItem = new ToolStripMenuItem("Show floating cat", null, (_, _) => onFloatingCatToggle());
+        _menu.Items.Add(_floatingCatItem);
+        _menu.Items.Add("Settings", null, (_, _) => onSettings());
+        _menu.Items.Add("About", null, (_, _) => onAbout());
+        _menu.Items.Add(new ToolStripSeparator());
+        _menu.Items.Add("Quit", null, (_, _) => onQuit());
 
         _notifyIcon = new NotifyIcon
         {
             Text = "Tama",
             Icon = BuildIcon(asleep: false),
-            ContextMenuStrip = menu,
+            ContextMenuStrip = _menu,
             Visible = true,
         };
         // Left-click toggles the popover; right-click's ContextMenuStrip pop-up is automatic.
         _notifyIcon.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) onToggle(); };
     }
+
+    /// <summary>Check state of the "Show floating cat" item — set from
+    /// AppSettingsViewModel.FloatingCatVisible (initially and on every change).</summary>
+    public bool FloatingCatChecked
+    {
+        set => _floatingCatItem.Checked = value;
+    }
+
+    /// <summary>Shows the tray's own context menu at a PHYSICAL screen point — the floating cat's
+    /// right-click (the caller foregrounds itself first so the menu dismisses on outside clicks).</summary>
+    public void ShowMenuAt(System.Drawing.Point screenPoint) => _menu.Show(screenPoint);
 
     /// <summary>Swaps the glyph when the mood's awake/asleep state changes (idempotent no-op
     /// otherwise, so a 7s/30s poll tick doesn't rebuild the icon every refresh).</summary>
@@ -90,6 +111,7 @@ public sealed class TrayIcon : IDisposable
         _notifyIcon.Visible = false;
         _notifyIcon.Icon?.Dispose();
         _notifyIcon.Dispose();
+        _menu.Dispose();
     }
 
     private static class NativeMethods

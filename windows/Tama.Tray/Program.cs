@@ -36,6 +36,7 @@ public static class Program
         TrayIcon? trayIcon = null;
         SettingsWindow? settingsWindow = null;
         PinnedWindow? pinnedWindow = null;
+        FloatingCatWindow? floatingCat = null;
 
         // Captured only once WPF's Run() has installed a DispatcherSynchronizationContext on
         // this (UI) thread (System.Windows.Application.Run sets it before raising Startup), so
@@ -44,7 +45,7 @@ public static class Program
         app.Startup += (_, _) =>
         {
             var syncContext = SynchronizationContext.Current;
-            (monitor, trayIcon, settingsWindow, pinnedWindow) = Bootstrap(app, syncContext);
+            (monitor, trayIcon, settingsWindow, pinnedWindow, floatingCat) = Bootstrap(app, syncContext);
         };
         app.Exit += (_, _) =>
         {
@@ -52,12 +53,14 @@ public static class Program
             trayIcon?.Dispose();
             settingsWindow?.CloseForReal();
             pinnedWindow?.CloseForReal();
+            floatingCat?.CloseForReal();
         };
 
         app.Run();
     }
 
-    private static (AgentMonitor Monitor, TrayIcon TrayIcon, SettingsWindow SettingsWindow, PinnedWindow PinnedWindow) Bootstrap(
+    private static (AgentMonitor Monitor, TrayIcon TrayIcon, SettingsWindow SettingsWindow, PinnedWindow PinnedWindow,
+        FloatingCatWindow FloatingCat) Bootstrap(
         System.Windows.Application app, SynchronizationContext? syncContext)
     {
         var monitor = new AgentMonitor(
@@ -108,7 +111,9 @@ public static class Program
 
         PopoverWindow? popover = null;
 
-        void TogglePopover()
+        // anchor: null = summoned from the tray (opens at the tray corner); the floating cat passes
+        // its own frame so the popover opens beside it instead.
+        void TogglePopover(WindowFrame? anchor = null)
         {
             if (popover is not null)
             {
@@ -117,7 +122,8 @@ public static class Program
             }
             // Reapply resolved appearance on popover open (macOS/Windows spec §1a).
             appSettingsVm.ReapplyIfSystem();
-            popover = new PopoverWindow(dashboardVm, ShowAbout, app.Shutdown, TogglePinned, appSettingsVm.FontScale);
+            popover = new PopoverWindow(dashboardVm, ShowAbout, app.Shutdown, TogglePinned, appSettingsVm.FontScale,
+                anchor: anchor);
             popover.Closed += (_, _) =>
             {
                 popover = null;
@@ -149,16 +155,41 @@ public static class Program
         void TogglePinned() => pinnedWindow.Toggle();
 
         var trayIcon = new TrayIcon(
-            onToggle: TogglePopover,
+            onToggle: () => TogglePopover(),
             onPinToggle: TogglePinned,
+            onFloatingCatToggle: () => appSettingsVm.FloatingCatVisible = !appSettingsVm.FloatingCatVisible,
             onSettings: ShowSettings,
             onAbout: ShowAbout,
             onQuit: app.Shutdown);
 
-        monitor.StateChanged += state => trayIcon.SetMood(state.Mood);
+        // The floating desktop cat — constructed AFTER trayIcon so its right-click can reuse the
+        // very same ContextMenuStrip. It shows/hides itself by observing FloatingCatVisible (the
+        // tray item above and the Settings checkbox both just flip that one property), and the
+        // tray item's check mark tracks the same property here. Deliberately NOT an
+        // InteractivePolling consumer: it is a permanent surface, so counting it would pin the 7s
+        // log-scan cadence for the app's whole life; it only needs Mood, where a 30s lag is
+        // invisible — and it still gets the faster updates via StateChanged whenever the popover
+        // or pinned window hold the interactive cadence.
+        var floatingCat = new FloatingCatWindow(appSettingsVm,
+            onClick: anchor => TogglePopover(anchor),
+            onRightClick: trayIcon.ShowMenuAt);
+        trayIcon.FloatingCatChecked = appSettingsVm.FloatingCatVisible;
+        appSettingsVm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppSettingsViewModel.FloatingCatVisible))
+                trayIcon.FloatingCatChecked = appSettingsVm.FloatingCatVisible;
+        };
+
+        monitor.StateChanged += state =>
+        {
+            trayIcon.SetMood(state.Mood);
+            floatingCat.SetMood(state.Mood);
+        };
+        floatingCat.SetMood(monitor.State.Mood);
+        floatingCat.ApplyVisibility();   // shown by default on a fresh install (setting defaults to true)
         monitor.Start(TimeSpan.FromSeconds(BackgroundIntervalSeconds));
 
-        return (monitor, trayIcon, settingsWindow, pinnedWindow);
+        return (monitor, trayIcon, settingsWindow, pinnedWindow, floatingCat);
     }
 
     private static void ShowAbout() =>
