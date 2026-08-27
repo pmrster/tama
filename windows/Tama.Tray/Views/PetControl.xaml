@@ -10,7 +10,7 @@
          owns only its vertical padding (applied by the caller as Margin="0,2,0,6", mirroring
          MenuBarView.swift's .padding(.top, 2).padding(.bottom, 6)). -->
     <Grid>
-        <Rectangle Fill="#4D453D" Height="1" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" />
+        <Rectangle x:Name="GroundLine" Fill="#4D453D" Height="1" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" />
         <Canvas>
             <Image x:Name="SpriteImage" Width="48" Height="30"
                    RenderOptions.BitmapScalingMode="NearestNeighbor"

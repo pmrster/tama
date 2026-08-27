@@ -35,6 +35,7 @@ public partial class PetControl : System.Windows.Controls.UserControl
     private readonly WriteableBitmap _walk2;
     private readonly WriteableBitmap _nap;
     private Mood _mood = Mood.Resting;
+    private bool _minimal;
 
     public PetControl()
     {
@@ -48,7 +49,24 @@ public partial class PetControl : System.Windows.Controls.UserControl
         _timer.Tick += (_, _) => Tick();
         Loaded += (_, _) => { ApplyTimerCadence(); _timer.Start(); Tick(); };
         Unloaded += (_, _) => _timer.Stop();
+        // A hidden Window never raises Unloaded on its content, so without this the 0.2s timer
+        // keeps ticking while the hosting window (the reused PinnedWindow, the floating cat) is
+        // Hide()-den. UIElement.IsVisible tracks the window's own visibility; Start() is idempotent.
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) { ApplyTimerCadence(); _timer.Start(); Tick(); }
+            else _timer.Stop();
+        };
         SizeChanged += (_, _) => Tick();
+    }
+
+    /// <summary>Floating-widget mode (FloatingCatWindow): just the sprite — no ground line, no
+    /// "meow~", no sleeping z's. The dashboard strip keeps the full PetView.swift treatment.</summary>
+    public void SetMinimal(bool minimal)
+    {
+        _minimal = minimal;
+        GroundLine.Visibility = minimal ? Visibility.Collapsed : Visibility.Visible;
+        Tick();
     }
 
     /// <summary>Called by PopoverWindow whenever AgentMonitor publishes a new mood (mirrors
@@ -88,8 +106,8 @@ public partial class PetControl : System.Windows.Controls.UserControl
         Canvas.SetLeft(SpriteImage, m.X);
         Canvas.SetBottom(SpriteImage, 2); // PetView.swift:136 — bob is always 0; offset is -2.
 
-        MeowText.Visibility = m.MeowVisible ? Visibility.Visible : Visibility.Collapsed;
-        if (m.MeowVisible)
+        MeowText.Visibility = m.MeowVisible && !_minimal ? Visibility.Visible : Visibility.Collapsed;
+        if (m.MeowVisible && !_minimal)
         {
             // PetView.swift:130 — offset(x: spriteW + 2, y: -spriteH/2 - 4), relative to the
             // sprite's own (already-positioned) origin.
@@ -100,7 +118,7 @@ public partial class PetControl : System.Windows.Controls.UserControl
         var zTexts = new[] { Z0Text, Z1Text, Z2Text };
         for (var i = 0; i < zTexts.Length; i++)
         {
-            if (i >= m.ZDrops.Count)
+            if (_minimal || i >= m.ZDrops.Count)
             {
                 zTexts[i].Visibility = Visibility.Collapsed;
                 continue;
