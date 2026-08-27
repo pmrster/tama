@@ -179,4 +179,66 @@ public sealed class SettingsStoreTests
         Assert.AreEqual(1.15, FontSize.Medium.Factor());
         Assert.AreEqual(1.3, FontSize.Large.Factor());
     }
+
+    // --- floating cat: "floatingCatVisible" (bool, default true) + "floatingCatFrame" ---
+
+    [TestMethod]
+    public void Floating_cat_defaults_to_visible_with_no_frame()
+    {
+        Assert.IsTrue(AppSettings.Default.FloatingCatVisible);
+        Assert.IsNull(AppSettings.Default.FloatingCatFrame);
+    }
+
+    [TestMethod]
+    public void Missing_floating_cat_keys_load_as_visible_true_and_null_frame()
+    {
+        // Upgrade path: a settings.json written by a build that predates the floating cat.
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"),
+            """{"appearance":"dark","fontSize":"large","pinnedFrame":{"x":1,"y":2,"width":3,"height":4}}""");
+        var loaded = new SettingsStore(_dir).Load();
+        Assert.IsTrue(loaded.FloatingCatVisible);
+        Assert.IsNull(loaded.FloatingCatFrame);
+        Assert.AreEqual(Appearance.Dark, loaded.Appearance);
+        Assert.AreEqual(new WindowFrame(1, 2, 3, 4), loaded.PinnedFrame);
+    }
+
+    [TestMethod]
+    public void Round_trips_floating_cat_hidden_and_frame()
+    {
+        var store = new SettingsStore(_dir);
+        var settings = new AppSettings(Appearance.Light, FontSize.Medium, null,
+            FloatingCatVisible: false, FloatingCatFrame: new WindowFrame(5, 6, 120, 68));
+        store.Save(settings);
+        Assert.AreEqual(settings, store.Load());
+    }
+
+    [TestMethod]
+    public void Non_boolean_floating_cat_visible_falls_back_to_true()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"),
+            """{"appearance":"system","fontSize":"small","floatingCatVisible":"nope"}""");
+        Assert.IsTrue(new SettingsStore(_dir).Load().FloatingCatVisible);
+    }
+
+    [TestMethod]
+    public void Partial_floating_cat_frame_falls_back_to_null()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"),
+            """{"appearance":"system","fontSize":"small","floatingCatFrame":{"x":1}}""");
+        Assert.IsNull(new SettingsStore(_dir).Load().FloatingCatFrame);
+    }
+
+    [TestMethod]
+    public void Pinned_and_floating_cat_frames_are_independent()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings(Appearance.System, FontSize.Small,
+            PinnedFrame: new WindowFrame(1, 2, 3, 4), FloatingCatFrame: new WindowFrame(9, 8, 7, 6)));
+        var loaded = store.Load();
+        Assert.AreEqual(new WindowFrame(1, 2, 3, 4), loaded.PinnedFrame);
+        Assert.AreEqual(new WindowFrame(9, 8, 7, 6), loaded.FloatingCatFrame);
+    }
 }

@@ -197,4 +197,74 @@ public sealed class AppSettingsViewModelTests
         vm.ReapplyIfSystem();
         Assert.AreEqual(3, calls.Count); // no new call in explicit Light mode
     }
+
+    // --- floating cat visibility + frame (mirrors the PinnedFrame contract) ---
+
+    [TestMethod]
+    public void Floating_cat_visible_defaults_true_and_persists_when_toggled_off()
+    {
+        var store = Store();
+        var vm = new AppSettingsViewModel(store);
+        Assert.IsTrue(vm.FloatingCatVisible);
+
+        vm.FloatingCatVisible = false;
+        Assert.IsFalse(new AppSettingsViewModel(store).FloatingCatVisible);
+    }
+
+    [TestMethod]
+    public void Floating_cat_frame_starts_null_and_persists_once_set()
+    {
+        var store = Store();
+        var vm = new AppSettingsViewModel(store);
+        Assert.IsNull(vm.FloatingCatFrame);
+
+        vm.FloatingCatFrame = new WindowFrame(10, 20, 120, 68);
+        Assert.AreEqual(new WindowFrame(10, 20, 120, 68), new AppSettingsViewModel(store).FloatingCatFrame);
+    }
+
+    [TestMethod]
+    public void Setting_the_same_floating_cat_values_again_does_not_reraise_property_changed()
+    {
+        var vm = new AppSettingsViewModel(Store());
+        vm.FloatingCatVisible = false;
+        vm.FloatingCatFrame = new WindowFrame(1, 2, 3, 4);
+        var raised = 0;
+        vm.PropertyChanged += (_, _) => raised++;
+        vm.FloatingCatVisible = false;
+        vm.FloatingCatFrame = new WindowFrame(1, 2, 3, 4);
+        Assert.AreEqual(0, raised);
+    }
+
+    [TestMethod]
+    public void Floating_cat_changes_raise_property_changed_with_their_own_names()
+    {
+        var vm = new AppSettingsViewModel(Store());
+        var names = new List<string?>();
+        vm.PropertyChanged += (_, e) => names.Add(e.PropertyName);
+        vm.FloatingCatVisible = false;
+        vm.FloatingCatFrame = new WindowFrame(1, 2, 3, 4);
+        CollectionAssert.AreEqual(
+            new[] { nameof(AppSettingsViewModel.FloatingCatVisible), nameof(AppSettingsViewModel.FloatingCatFrame) },
+            names);
+    }
+
+    [TestMethod]
+    public void Setting_floating_cat_state_does_not_disturb_appearance_font_size_or_pinned_frame()
+    {
+        var store = Store();
+        var vm = new AppSettingsViewModel(store);
+        vm.Appearance = Appearance.Dark;
+        vm.FontSize = FontSize.Large;
+        vm.PinnedFrame = new WindowFrame(1, 2, 3, 4);
+
+        vm.FloatingCatVisible = false;
+        vm.FloatingCatFrame = new WindowFrame(9, 8, 7, 6);
+
+        var reloaded = new AppSettingsViewModel(store);
+        Assert.AreEqual(Appearance.Dark, reloaded.Appearance);
+        Assert.AreEqual(FontSize.Large, reloaded.FontSize);
+        Assert.AreEqual(new WindowFrame(1, 2, 3, 4), reloaded.PinnedFrame);
+        Assert.IsFalse(reloaded.FloatingCatVisible);
+        Assert.AreEqual(new WindowFrame(9, 8, 7, 6), reloaded.FloatingCatFrame);
+    }
 }

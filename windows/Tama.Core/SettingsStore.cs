@@ -32,10 +32,13 @@ public readonly record struct WindowFrame(double X, double Y, double Width, doub
 /// <summary>The user's persisted visual preferences (planc-ui-spec.md §5). Value type mirroring
 /// Swift's SettingsStore's two properties as one unit, so Load()/Save() have a single argument.
 /// <see cref="PinnedFrame"/> is null until the pinned window has been shown at least once (spec
-/// §1b: "centered on first presentation only").</summary>
-public readonly record struct AppSettings(Appearance Appearance, FontSize FontSize, WindowFrame? PinnedFrame = null)
+/// §1b: "centered on first presentation only"). <see cref="FloatingCatVisible"/> /
+/// <see cref="FloatingCatFrame"/> back the Windows-only floating desktop cat: shown by default on
+/// a fresh install (and on a settings.json that predates it), frame null until first dragged.</summary>
+public readonly record struct AppSettings(Appearance Appearance, FontSize FontSize, WindowFrame? PinnedFrame = null,
+    bool FloatingCatVisible = true, WindowFrame? FloatingCatFrame = null)
 {
-    public static readonly AppSettings Default = new(Appearance.System, FontSize.Small, null);
+    public static readonly AppSettings Default = new(Appearance.System, FontSize.Small, null, true, null);
 }
 
 /// <summary>
@@ -77,21 +80,28 @@ public sealed class SettingsStore
                 ? parsedFontSize
                 : AppSettings.Default.FontSize;
 
-            var pinnedFrame = ParseFrame(doc.RootElement);
+            var pinnedFrame = ParseFrame(doc.RootElement, "pinnedFrame");
 
-            return new AppSettings(appearance, fontSize, pinnedFrame);
+            var floatingCatVisible = doc.RootElement.TryGetProperty("floatingCatVisible", out var v)
+                && v.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? v.GetBoolean()
+                : AppSettings.Default.FloatingCatVisible;
+
+            var floatingCatFrame = ParseFrame(doc.RootElement, "floatingCatFrame");
+
+            return new AppSettings(appearance, fontSize, pinnedFrame, floatingCatVisible, floatingCatFrame);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException
             or ArgumentException or NotSupportedException)
         { return AppSettings.Default; }
     }
 
-    /// <summary>A malformed/partial "pinnedFrame" object (missing field, wrong type) falls back to
-    /// null rather than a half-populated frame — same never-throw, field-by-field-independent
-    /// fallback contract as appearance/fontSize above.</summary>
-    private static WindowFrame? ParseFrame(JsonElement root)
+    /// <summary>A malformed/partial frame object (missing field, wrong type) under
+    /// <paramref name="key"/> falls back to null rather than a half-populated frame — same
+    /// never-throw, field-by-field-independent fallback contract as appearance/fontSize above.</summary>
+    private static WindowFrame? ParseFrame(JsonElement root, string key)
     {
-        if (!root.TryGetProperty("pinnedFrame", out var f) || f.ValueKind != JsonValueKind.Object)
+        if (!root.TryGetProperty(key, out var f) || f.ValueKind != JsonValueKind.Object)
             return null;
         if (f.TryGetProperty("x", out var x) && x.ValueKind == JsonValueKind.Number
             && f.TryGetProperty("y", out var y) && y.ValueKind == JsonValueKind.Number
@@ -110,9 +120,9 @@ public sealed class SettingsStore
             {
                 appearance = settings.Appearance.ToString().ToLowerInvariant(),
                 fontSize = settings.FontSize.ToString().ToLowerInvariant(),
-                pinnedFrame = settings.PinnedFrame is { } pf
-                    ? new { x = pf.X, y = pf.Y, width = pf.Width, height = pf.Height }
-                    : null,
+                pinnedFrame = FrameJson(settings.PinnedFrame),
+                floatingCatVisible = settings.FloatingCatVisible,
+                floatingCatFrame = FrameJson(settings.FloatingCatFrame),
             });
             var tmp = _filePath + ".tmp";
             File.WriteAllText(tmp, json);
@@ -122,6 +132,9 @@ public sealed class SettingsStore
             or ArgumentException or NotSupportedException)
         { /* persistence is best-effort; settings just reload as defaults next launch */ }
     }
+
+    private static object? FrameJson(WindowFrame? frame) =>
+        frame is { } f ? new { x = f.X, y = f.Y, width = f.Width, height = f.Height } : null;
 
     /// <summary>The shipped store: %APPDATA%\Tama (falls back to the temp dir, never throws).</summary>
     public static SettingsStore AppData()

@@ -24,6 +24,8 @@ public sealed class AppSettingsViewModel : INotifyPropertyChanged
     private Appearance _appearance;
     private FontSize _fontSize;
     private WindowFrame? _pinnedFrame;
+    private bool _floatingCatVisible;
+    private WindowFrame? _floatingCatFrame;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -38,6 +40,8 @@ public sealed class AppSettingsViewModel : INotifyPropertyChanged
         _appearance = loaded.Appearance;
         _fontSize = loaded.FontSize;
         _pinnedFrame = loaded.PinnedFrame;
+        _floatingCatVisible = loaded.FloatingCatVisible;
+        _floatingCatFrame = loaded.FloatingCatFrame;
     }
 
     /// <summary>Persists on every change and retints live via the injected callback (spec §5:
@@ -114,7 +118,38 @@ public sealed class AppSettingsViewModel : INotifyPropertyChanged
         }
     }
 
-    private void Persist() => _store.Save(new AppSettings(_appearance, _fontSize, _pinnedFrame));
+    /// <summary>Whether the floating desktop cat (<c>Tama.Tray.FloatingCatWindow</c>) is shown.
+    /// Defaults to true; persisted on every change. The tray menu's "Show floating cat" check,
+    /// the Settings window's checkbox and the window itself all observe this one property, so
+    /// they can never disagree.</summary>
+    public bool FloatingCatVisible
+    {
+        get => _floatingCatVisible;
+        set
+        {
+            if (_floatingCatVisible == value) return;
+            _floatingCatVisible = value;
+            Persist();
+            Raise();
+        }
+    }
+
+    /// <summary>The floating cat's last-known position (its size is ignored on restore — see
+    /// <see cref="FloatingCatPlacement.Restore"/>). Null until it has been shown once.</summary>
+    public WindowFrame? FloatingCatFrame
+    {
+        get => _floatingCatFrame;
+        set
+        {
+            if (_floatingCatFrame == value) return;
+            _floatingCatFrame = value;
+            Persist();
+            Raise();
+        }
+    }
+
+    private void Persist() =>
+        _store.Save(new AppSettings(_appearance, _fontSize, _pinnedFrame, _floatingCatVisible, _floatingCatFrame));
 
     private void Raise([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
